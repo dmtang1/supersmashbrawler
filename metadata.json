@@ -1,0 +1,6 @@
+{
+  "name": "Super Smash Brawler",
+  "description": "A platform fighter game inspired by Super Smash featuring punch, kick, 4-way throws with bounce physics, sprint, and battle modes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
