@@ -1,14 +1,45 @@
 import { sound } from './audio';
-import { AttackState, Fighter, InputState, Particle, Stage } from './types';
+import { ITEM_DEFS, tossHeldWeapon, useHeldWeapon } from './items';
+import {
+  AttackState,
+  Fighter,
+  InputState,
+  ItemWorld,
+  Particle,
+  Stage,
+  PERCENT_KO_THRESHOLD,
+  SPRINT_STAMINA_MAX,
+} from './types';
 
 export const GRAVITY = 0.65;
 export const TERMINAL_VELOCITY = 18;
 export const GROUND_FRICTION = 0.82;
 export const AIR_DRAG = 0.96;
 
+/** Global launch scale. 1.0 is the original curve; lower values keep hits snappy without early KOs. */
+const KNOCKBACK_SCALE = 0.62;
+
+/** ~4.8s of continuous sprint at 60fps, then a short wait before you can dash again. */
+const SPRINT_STAMINA_DRAIN = 0.35;
+const SPRINT_STAMINA_REGEN = 0.38;
+const SPRINT_RESTART_MIN = 12;
+
 /** Smash-style launch: every 1% of damage adds `growth` speed. Heavier fighters resist more. */
 function knockbackFromPercent(base: number, growth: number, percent: number, weight: number): number {
-  return (base + percent * growth) / weight;
+  return ((base + percent * growth) / weight) * KNOCKBACK_SCALE;
+}
+
+function updateSprintStamina(fighter: Fighter, wantsSprint: boolean) {
+  const stamina = fighter.sprintStamina ?? SPRINT_STAMINA_MAX;
+  const canKeepSprinting = stamina > 0;
+  const canStartSprinting = stamina >= SPRINT_RESTART_MIN;
+  fighter.isSprinting = wantsSprint && (fighter.isSprinting ? canKeepSprinting : canStartSprinting);
+
+  if (fighter.isSprinting) {
+    fighter.sprintStamina = Math.max(0, stamina - SPRINT_STAMINA_DRAIN);
+  } else {
+    fighter.sprintStamina = Math.min(SPRINT_STAMINA_MAX, stamina + SPRINT_STAMINA_REGEN);
+  }
 }
 
 export function createInitialFighter(
@@ -35,6 +66,7 @@ export function createInitialFighter(
     doubleJumpsLeft: stats.doubleJumps,
     jumpReleased: true,
     isSprinting: false,
+    sprintStamina: SPRINT_STAMINA_MAX,
     isCrouching: false,
     damagePercent: 0,
     stocks: 3,
@@ -56,6 +88,7 @@ export function createInitialFighter(
     shadowPhaseTimer: 0,
     hasSuperArmor: false,
     wingFlapTick: 0,
+    heldWeapon: null,
   };
 }
 
@@ -65,19 +98,30 @@ export function updateFighterPhysics(
   input: InputState,
   stage: Stage,
   particles: Particle[],
-  addScreenShake: (intensity: number, frames: number) => void
+  addScreenShake: (intensity: number, frames: number) => void,
+  itemWorld: ItemWorld
 ): { koOccurred: boolean } {
+  if (fighter.stocks <= 0) {
+    return { koOccurred: false };
+  }
+
   // Handle Respawning
   if (fighter.respawnTimer > 0) {
     fighter.respawnTimer--;
     fighter.vx = 0;
     fighter.vy = 0;
+    fighter.isSprinting = false;
+    fighter.sprintStamina = SPRINT_STAMINA_MAX;
     fighter.currentAction = 'respawning';
     if (fighter.respawnTimer === 0) {
       fighter.invincibleFrames = 120;
       fighter.currentAction = 'idle';
     }
     return { koOccurred: false };
+  }
+
+  if (tryPercentKo(fighter, particles, addScreenShake, opponent)) {
+    return { koOccurred: true };
   }
 
   if (fighter.invincibleFrames > 0) {
@@ -114,7 +158,7 @@ export function updateFighterPhysics(
     fighter.burnTimer--;
     // Burn tick damage every 35 frames (~0.6s)
     if (fighter.burnTimer % 35 === 0) {
-      fighter.damagePercent = Math.min(999, fighter.damagePercent + 1);
+      fighter.damagePercent += 1;
       particles.push({
         x: fighter.x + (Math.random() - 0.5) * 16,
         y: fighter.y - 12,
@@ -126,6 +170,9 @@ export function updateFighterPhysics(
         decay: 0.05,
         type: 'spark',
       });
+      if (tryPercentKo(fighter, particles, addScreenShake, opponent)) {
+        return { koOccurred: true };
+      }
     }
   }
 
@@ -142,6 +189,20 @@ export function updateFighterPhysics(
     }
   }
 
+  const sprintLocked =
+    !!fighter.ledgeHang ||
+    fighter.hitstun > 0 ||
+    !!fighter.attack ||
+    fighter.grab.role !== 'none';
+  updateSprintStamina(
+    fighter,
+    !sprintLocked &&
+      input.sprint &&
+      (input.left || input.right) &&
+      fighter.isGrounded &&
+      !fighter.isCrouching
+  );
+
   // Handle Ledge Hang (holding onto the platform edge)
   if (fighter.ledgeHang) {
     if (fighter.hitstun > 0) {
@@ -149,7 +210,7 @@ export function updateFighterPhysics(
       fighter.ledgeHang = null;
       fighter.currentAction = 'hitstun';
       applyPhysics(fighter, stage, particles, addScreenShake);
-      return checkBlastZone(fighter, stage, particles, addScreenShake);
+      return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
     }
 
     fighter.currentAction = 'ledge_hang';
@@ -181,7 +242,7 @@ export function updateFighterPhysics(
       fighter.ledgeCooldownTimer = 40;
       fighter.currentAction = 'fall';
       fighter.vy = 2;
-      return checkBlastZone(fighter, stage, particles, addScreenShake);
+      return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
     }
 
     // Execute Climb Up
@@ -232,10 +293,10 @@ export function updateFighterPhysics(
       if (input.kick) {
         startKick(fighter, input);
       } else {
-        startPunch(fighter, input);
+        startPunch(fighter, input, itemWorld, particles, addScreenShake);
       }
       createHitText(fighter.x, fighter.y - 30, 'LEDGE ATTACK', '#ef4444', particles);
-      return checkBlastZone(fighter, stage, particles, addScreenShake);
+      return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
     }
 
     // Execute Ledge Drop
@@ -245,7 +306,7 @@ export function updateFighterPhysics(
       fighter.currentAction = 'fall';
       fighter.vx = side === 'left' ? -2 : 2;
       fighter.vy = 2;
-      return checkBlastZone(fighter, stage, particles, addScreenShake);
+      return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
     }
 
     return { koOccurred: false };
@@ -294,7 +355,7 @@ export function updateFighterPhysics(
     if (checkLedgeGrab(fighter, opponent, stage, particles)) {
       return { koOccurred: false };
     }
-    return checkBlastZone(fighter, stage, particles, addScreenShake);
+    return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
   }
 
   // Handle Being Grabber (Holding Opponent)
@@ -327,10 +388,14 @@ export function updateFighterPhysics(
       sound.playAttack(fighter.stats.id, input.kick ? 'kick' : 'punch');
       createHitSparks(opponent.x, opponent.y, '#f59e0b', particles, 5);
       addScreenShake(2, 5);
+      if (tryPercentKo(opponent, particles, addScreenShake, fighter)) {
+        fighter.actionTimer++;
+        return { koOccurred: true };
+      }
     }
 
     fighter.actionTimer++;
-    return checkBlastZone(fighter, stage, particles, addScreenShake);
+    return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
   }
 
   // Handle Attacks (punch, kick, whiffed grab, directional throws)
@@ -375,7 +440,7 @@ export function updateFighterPhysics(
     if (checkLedgeGrab(fighter, opponent, stage, particles)) {
       return { koOccurred: false };
     }
-    return checkBlastZone(fighter, stage, particles, addScreenShake);
+    return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
   }
 
   // --- Normal Movement & Action Inputs ---
@@ -387,9 +452,6 @@ export function updateFighterPhysics(
   if (checkLedgeGrab(fighter, opponent, stage, particles)) {
     return { koOccurred: false };
   }
-
-  // Sprinting state
-  fighter.isSprinting = input.sprint && (input.left || input.right) && fighter.isGrounded;
 
   // Crouch / Drop-through
   if (input.down && fighter.isGrounded) {
@@ -458,7 +520,7 @@ export function updateFighterPhysics(
       sound.playJump(false);
       createJumpDust(fighter.x, fighter.y + fighter.height / 2, particles);
     } else if (fighter.jumpReleased && fighter.doubleJumpsLeft > 0) {
-      fighter.vy = -fighter.stats.jumpForce * 0.92;
+      fighter.vy = -fighter.stats.jumpForce * 1.22;
       fighter.doubleJumpsLeft--;
       fighter.jumpReleased = false;
       fighter.currentAction = 'jump';
@@ -508,9 +570,22 @@ export function updateFighterPhysics(
 
   // Initiate Attacks
   if (input.grab) {
-    startGrab(fighter, opponent, input, particles, addScreenShake);
+    if (fighter.heldWeapon) {
+      tossHeldWeapon(fighter, itemWorld, particles);
+      fighter.attack = {
+        type: 'grab',
+        frame: 0,
+        totalFrames: 14,
+        startupFrames: 0,
+        activeFrames: 0,
+        hitLanded: true,
+      };
+      fighter.currentAction = 'punch';
+    } else {
+      startGrab(fighter, opponent, input, particles, addScreenShake);
+    }
   } else if (input.punch) {
-    startPunch(fighter, input);
+    startPunch(fighter, input, itemWorld, particles, addScreenShake);
   } else if (input.kick) {
     startKick(fighter, input);
   }
@@ -523,7 +598,7 @@ export function updateFighterPhysics(
   }
 
   // Check Blast Zone
-  return checkBlastZone(fighter, stage, particles, addScreenShake);
+  return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
 }
 
 function getThrowDirection(input: InputState, facing: 1 | -1): 'up' | 'down' | 'forward' | 'back' | null {
@@ -697,9 +772,21 @@ export function executeThrow(
   }
 
   opponent.isGrounded = false;
+  tryPercentKo(opponent, particles, addScreenShake, fighter);
 }
 
-function startPunch(fighter: Fighter, input: InputState) {
+function startPunch(
+  fighter: Fighter,
+  input: InputState,
+  itemWorld: ItemWorld,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void
+) {
+  if (fighter.heldWeapon) {
+    useHeldWeapon(fighter, input, itemWorld, particles, addScreenShake);
+    return;
+  }
+
   sound.playAttack(fighter.stats.id, 'punch');
   const isMoving = Math.abs(fighter.vx) > 2;
   const isUp = input.up;
@@ -748,15 +835,18 @@ function checkAttackHit(
 ) {
   if (defender.invincibleFrames > 0 || defender.grab.role === 'grabbed') return;
 
+  const weaponDef = atk.weaponKind ? ITEM_DEFS[atk.weaponKind] : null;
+  const isWeapon = !!weaponDef && weaponDef.category === 'melee';
+
   // Hitbox detection
-  const reach = atk.type === 'kick' ? 62 : 48;
+  const reach = isWeapon ? weaponDef.reach : atk.type === 'kick' ? 62 : 48;
   const hitYOffset = atk.direction === 'up' ? -40 : atk.direction === 'down' ? 40 : 0;
   const hitXOffset = atk.direction === 'up' || atk.direction === 'down' ? 0 : attacker.facing * reach;
 
   const hitbox = {
     x: attacker.x + hitXOffset,
     y: attacker.y + hitYOffset,
-    radius: atk.type === 'kick' ? 38 : 30,
+    radius: isWeapon ? weaponDef.hitRadius : atk.type === 'kick' ? 38 : 30,
   };
 
   const dist = Math.hypot(hitbox.x - defender.x, hitbox.y - defender.y);
@@ -764,7 +854,11 @@ function checkAttackHit(
   if (dist < hitbox.radius + defender.width / 2) {
     atk.hitLanded = true;
     const isKick = atk.type === 'kick';
-    const baseDamage = isKick ? attacker.stats.kickDamage : attacker.stats.punchDamage;
+    const baseDamage = isWeapon
+      ? weaponDef.damage
+      : isKick
+        ? attacker.stats.kickDamage
+        : attacker.stats.punchDamage;
     defender.damagePercent += baseDamage;
 
     const pct = defender.damagePercent;
@@ -774,16 +868,36 @@ function checkAttackHit(
     let launchVy = 0;
 
     if (atk.direction === 'up') {
-      launchVx = attacker.facing * knockbackFromPercent(2, 0.05, pct, wt);
-      launchVy = -knockbackFromPercent(isKick ? 11 : 9, isKick ? 0.26 : 0.22, pct, wt);
+      launchVx = attacker.facing * knockbackFromPercent(isWeapon ? 2.5 : 2, isWeapon ? 0.06 : 0.05, pct, wt);
+      launchVy = -knockbackFromPercent(
+        isWeapon ? weaponDef.knockbackBase : isKick ? 11 : 9,
+        isWeapon ? weaponDef.knockbackGrowth : isKick ? 0.26 : 0.22,
+        pct,
+        wt
+      );
     } else if (atk.direction === 'down') {
       // Meteor stomp or dive — stronger send at high percents
       launchVx = attacker.facing * knockbackFromPercent(2.5, 0.06, pct, wt);
-      launchVy = knockbackFromPercent(isKick ? 12 : 10, isKick ? 0.2 : 0.16, pct, wt);
+      launchVy = knockbackFromPercent(
+        isWeapon ? weaponDef.knockbackBase * 0.85 : isKick ? 12 : 10,
+        isWeapon ? weaponDef.knockbackGrowth : isKick ? 0.2 : 0.16,
+        pct,
+        wt
+      );
       defender.bouncedOnGround = false;
     } else {
-      launchVx = attacker.facing * knockbackFromPercent(isKick ? 8 : 6, isKick ? 0.26 : 0.2, pct, wt);
-      launchVy = -knockbackFromPercent(isKick ? 5 : 4, isKick ? 0.12 : 0.09, pct, wt);
+      launchVx = attacker.facing * knockbackFromPercent(
+        isWeapon ? weaponDef.knockbackBase : isKick ? 8 : 6,
+        isWeapon ? weaponDef.knockbackGrowth : isKick ? 0.26 : 0.2,
+        pct,
+        wt
+      );
+      launchVy = -knockbackFromPercent(
+        isWeapon ? weaponDef.knockbackBase * 0.35 : isKick ? 5 : 4,
+        isWeapon ? weaponDef.knockbackGrowth * 0.45 : isKick ? 0.12 : 0.09,
+        pct,
+        wt
+      );
     }
 
     defender.vx = launchVx;
@@ -794,7 +908,10 @@ function checkAttackHit(
     const shakeVal = Math.min(12, Math.floor(4 + pct * 0.06));
     addScreenShake(shakeVal, Math.floor(8 + pct * 0.08));
 
-    if (isKick) {
+    if (isWeapon) {
+      createHitSparks(defender.x, defender.y, weaponDef.glowColor, particles, 16);
+      createHitText(defender.x, defender.y - 42, weaponDef.name.toUpperCase(), weaponDef.glowColor, particles);
+    } else if (isKick) {
       sound.playAttack(attacker.stats.id, 'kick');
       createHitSparks(defender.x, defender.y, '#f43f5e', particles, 14);
     } else {
@@ -802,7 +919,13 @@ function checkAttackHit(
       createHitSparks(defender.x, defender.y, '#fbbf24', particles, 8);
     }
 
-    createHitText(defender.x, defender.y - 25, `${baseDamage}%`, isKick ? '#ef4444' : '#f59e0b', particles);
+    createHitText(
+      defender.x,
+      defender.y - 25,
+      `${baseDamage}%`,
+      isWeapon ? weaponDef.color : isKick ? '#ef4444' : '#f59e0b',
+      particles
+    );
 
     // ==================================================
     // CREATURE SPECIAL ABILITIES ON HIT RESOLUTION
@@ -821,7 +944,7 @@ function checkAttackHit(
 
     // 2. Zephyr Drake: Gale Wind Gust
     if (aId === 'zephyr') {
-      defender.vx += attacker.facing * 5.5;
+      defender.vx += attacker.facing * 3.2;
       createWindGust(defender.x, defender.y, attacker.facing, particles);
       createHitText(defender.x, defender.y - 45, 'WIND GUST!', '#38bdf8', particles);
       sound.playGlide();
@@ -878,6 +1001,10 @@ function checkAttackHit(
       createEarthquakeTremor(attacker.x, attacker.y, {} as Stage, defender, particles, addScreenShake);
     }
 
+    if (tryPercentKo(defender, particles, addScreenShake, attacker)) {
+      return;
+    }
+
     if (defender.hitstun > 0) {
       defender.isGrounded = false;
     }
@@ -906,7 +1033,7 @@ export function applyLedgeMagnetism(fighter: Fighter, stage: Stage) {
     // Left Ledge magnetism: only when already close off-stage (dLeftX <= -6) and level/below ledge
     const dLeftX = fighter.x - platLeft;
     const dLeftY = fighter.y - platTop;
-    if (dLeftX >= -82 && dLeftX <= -6 && dLeftY >= -12 && dLeftY <= 82) {
+    if (dLeftX >= -200 && dLeftX <= -6 && dLeftY >= -14 && dLeftY <= 195) {
       if (fighter.vx < 4.0) {
         fighter.vx += 0.45;
       }
@@ -918,7 +1045,7 @@ export function applyLedgeMagnetism(fighter: Fighter, stage: Stage) {
     // Right Ledge magnetism: only when already close off-stage (dRightX >= 6) and level/below ledge
     const dRightX = fighter.x - platRight;
     const dRightY = fighter.y - platTop;
-    if (dRightX <= 82 && dRightX >= 6 && dRightY >= -12 && dRightY <= 82) {
+    if (dRightX <= 200 && dRightX >= 6 && dRightY >= -14 && dRightY <= 195) {
       if (fighter.vx > -4.0) {
         fighter.vx -= 0.45;
       }
@@ -960,11 +1087,11 @@ export function checkLedgeGrab(
     // Never grab if fighter is on top of the stage surface (inward and above)
     const isOnStageSurfaceLeft = distLeftX > 2 && distLeftY < 12;
 
-    // Grab when close to the lip (forgiving, but not a long-range snap):
+    // Grab from farther out than the original snap (85/130) so recovery can reach the lip.
     // 1) TO THE SIDE (offstage left)
-    // 2) UNDER the corner, still near the lip
-    const isToSideLeft = distLeftX >= -52 && distLeftX <= 2 && distLeftY >= -12 && distLeftY <= 68;
-    const isUnderLeft = distLeftY >= 6 && distLeftY <= 68 && distLeftX >= -28 && distLeftX <= 12;
+    // 2) UNDER the corner
+    const isToSideLeft = distLeftX >= -100 && distLeftX <= 2 && distLeftY >= -16 && distLeftY <= 150;
+    const isUnderLeft = distLeftY >= 6 && distLeftY <= 150 && distLeftX >= -58 && distLeftX <= 24;
 
     if (!isOnStageSurfaceLeft && (isToSideLeft || isUnderLeft)) {
       fighter.hitstun = 0;
@@ -1175,37 +1302,79 @@ function handlePlatformLanding(
   }
 }
 
+function tryPercentKo(
+  fighter: Fighter,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void,
+  opponent?: Fighter
+): boolean {
+  if (fighter.stocks <= 0 || fighter.respawnTimer > 0) return false;
+  if (fighter.damagePercent < PERCENT_KO_THRESHOLD) return false;
+  eliminateFighter(fighter, particles, addScreenShake, 'percent', opponent);
+  return true;
+}
+
+function eliminateFighter(
+  fighter: Fighter,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void,
+  kind: 'blast' | 'percent',
+  opponent?: Fighter
+) {
+  sound.playKoExplosion();
+
+  if (kind === 'percent') {
+    addScreenShake(22, 32);
+    createPercentExplosion(fighter.x, fighter.y, fighter.stats.color, particles);
+  } else {
+    addScreenShake(15, 25);
+    createKoBlast(fighter.x, fighter.y, fighter.stats.color, particles);
+  }
+
+  if (opponent && opponent.grab.role !== 'none') {
+    opponent.grab = { role: 'none', duration: 0, maxDuration: 0 };
+    opponent.attack = null;
+  }
+
+  fighter.stocks--;
+  fighter.damagePercent = 0;
+  fighter.vx = 0;
+  fighter.vy = 0;
+  fighter.hitstun = 0;
+  fighter.attack = null;
+  fighter.grab = { role: 'none', duration: 0, maxDuration: 0 };
+  fighter.ledgeHang = null;
+  fighter.burnTimer = 0;
+  fighter.frostbiteTimer = 0;
+  fighter.isSprinting = false;
+  fighter.sprintStamina = SPRINT_STAMINA_MAX;
+  fighter.isGrounded = false;
+  fighter.currentAction = fighter.stocks > 0 ? 'respawning' : 'idle';
+
+  if (fighter.stocks > 0) {
+    fighter.respawnTimer = 60;
+    fighter.x = 700;
+    fighter.y = 200;
+    fighter.bouncedOnGround = true;
+  }
+}
+
 function checkBlastZone(
   fighter: Fighter,
+  opponent: Fighter,
   stage: Stage,
   particles: Particle[],
   addScreenShake: (intensity: number, frames: number) => void
 ): { koOccurred: boolean } {
+  if (tryPercentKo(fighter, particles, addScreenShake, opponent)) {
+    return { koOccurred: true };
+  }
+
   const b = stage.blastZone;
   const isOut = fighter.x < b.left || fighter.x > b.right || fighter.y < b.top || fighter.y > b.bottom;
 
   if (isOut && fighter.respawnTimer === 0) {
-    // KO!
-    sound.playKoExplosion();
-    addScreenShake(15, 25);
-    createKoBlast(fighter.x, fighter.y, fighter.stats.color, particles);
-
-    fighter.stocks--;
-    fighter.damagePercent = 0;
-    fighter.vx = 0;
-    fighter.vy = 0;
-    fighter.hitstun = 0;
-    fighter.attack = null;
-    fighter.grab = { role: 'none', duration: 0, maxDuration: 0 };
-
-    if (fighter.stocks > 0) {
-      // Respawn at stage center spawn point
-      fighter.respawnTimer = 60; // 1 second halo hover
-      fighter.x = 700;
-      fighter.y = 200;
-      fighter.bouncedOnGround = true;
-    }
-
+    eliminateFighter(fighter, particles, addScreenShake, 'blast', opponent);
     return { koOccurred: true };
   }
 
@@ -1315,6 +1484,48 @@ function createKoBlast(x: number, y: number, color: string, particles: Particle[
       type: 'spark',
     });
   }
+}
+
+function createPercentExplosion(x: number, y: number, color: string, particles: Particle[]) {
+  createKoBlast(x, y, color, particles);
+  particles.push({
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    color: '#fb923c',
+    size: 90,
+    alpha: 1,
+    decay: 0.03,
+    type: 'shockwave',
+  });
+  particles.push({
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    color: '#facc15',
+    size: 70,
+    alpha: 1,
+    decay: 0.028,
+    type: 'ring',
+  });
+  for (let i = 0; i < 40; i++) {
+    const angle = (i / 40) * Math.PI * 2;
+    const speed = 8 + Math.random() * 14;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color: i % 3 === 0 ? '#f97316' : i % 3 === 1 ? '#facc15' : '#ffffff',
+      size: 7 + Math.random() * 8,
+      alpha: 1,
+      decay: 0.018 + Math.random() * 0.02,
+      type: 'spark',
+    });
+  }
+  createHitText(x, y - 40, 'BOOM!', '#fff7ed', particles);
 }
 
 function createJumpDust(x: number, y: number, particles: Particle[]) {
@@ -1571,5 +1782,6 @@ export function createEarthquakeTremor(
     opponent.hitstun = Math.floor(16 + opponent.damagePercent * 0.18);
     opponent.currentAction = 'hitstun';
     createHitText(opponent.x, opponent.y - 30, 'TREMOR!', '#f59e0b', particles);
+    tryPercentKo(opponent, particles, addScreenShake);
   }
 }

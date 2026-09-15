@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // Project Pages live at /supersmashbrawler/; local `npm run dev` stays at /.
+    base: process.env.GITHUB_ACTIONS ? '/supersmashbrawler/' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

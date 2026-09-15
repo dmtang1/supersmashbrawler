@@ -27,7 +27,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
           </div>
           <div>
             <h2 className="text-xl font-black tracking-tight text-white">Battle Controls Guide</h2>
-            <p className="text-xs text-slate-400">Master movement, punches, kicks, grabs, and 4-way throws</p>
+            <p className="text-xs text-slate-400">Master movement, punches, kicks, grabs, item weapons, and 4-way throws</p>
           </div>
         </div>
 
@@ -117,6 +117,17 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
               </li>
             </ul>
           </div>
+        </div>
+
+        {/* Item Drops */}
+        <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-950/50 to-slate-900 border border-amber-500/40 rounded-xl text-xs">
+          <div className="flex items-center gap-2 font-bold text-amber-300 mb-1">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span>Item Drops Every Match</span>
+          </div>
+          <p className="text-slate-300 text-[11px] leading-relaxed">
+            Weapon crates fall onto the stage throughout the fight — blasters, ray guns, swords, beam swords, hammers, home-run bats, and bombs. Walk into a crate to pick it up. Punch uses the weapon; grab tosses it away.
+          </p>
         </div>
 
         {/* Ledge Grab & Recovery Banner */}

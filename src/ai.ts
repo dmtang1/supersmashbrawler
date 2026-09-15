@@ -1,10 +1,12 @@
-import { Fighter, InputState, Stage } from './types';
+import { Fighter, InputState, Stage, WorldItem } from './types';
+import { ITEM_DEFS } from './items';
 
 export function calculateCpuInput(
   cpu: Fighter,
   player: Fighter,
   stage: Stage,
-  cpuLevel: number // 1 to 9
+  cpuLevel: number, // 1 to 9
+  worldItems: WorldItem[] = []
 ): InputState {
   const input: InputState = {
     up: false,
@@ -99,6 +101,51 @@ export function calculateCpuInput(
     return input;
   }
 
+  // Chase nearby item crates when unarmed
+  if (!cpu.heldWeapon && worldItems.length > 0 && cpuLevel >= 1) {
+    let nearest: WorldItem | null = null;
+    let nearestDist = Infinity;
+    for (const item of worldItems) {
+      if (item.pickupLock > 0) continue;
+      const itemDist = Math.hypot(item.x - cpu.x, item.y - cpu.y);
+      if (itemDist < nearestDist) {
+        nearest = item;
+        nearestDist = itemDist;
+      }
+    }
+    const seekRange = cpuLevel <= 2 ? 220 : 340;
+    if (nearest && nearestDist < seekRange && (nearestDist < dist - 20 || dist > 110)) {
+      if (nearest.x > cpu.x + 8) input.right = true;
+      else if (nearest.x < cpu.x - 8) input.left = true;
+      if (nearest.y < cpu.y - 40 && (cpu.isGrounded || cpu.doubleJumpsLeft > 0)) {
+        input.up = true;
+      }
+      if (nearest.y > cpu.y + 50 && cpu.onDropThroughPlatform) {
+        input.down = true;
+      }
+      return input;
+    }
+  }
+
+  // Use held guns / bombs at range instead of rushing in
+  if (cpu.heldWeapon) {
+    const def = ITEM_DEFS[cpu.heldWeapon.kind];
+    if (def.category === 'ranged' && dist < 420) {
+      if (dx > 12) input.right = true;
+      else if (dx < -12) input.left = true;
+      if (Math.abs(dy) < 70 && dist > 55 && Math.random() < (cpuLevel <= 2 ? 0.28 : 0.5)) {
+        input.punch = true;
+      }
+      return input;
+    }
+    if (def.category === 'throwable' && dist < 210 && Math.abs(dy) < 90) {
+      if (dx > 8) input.right = true;
+      else if (dx < -8) input.left = true;
+      if (dist > 40 && Math.random() < 0.4) input.punch = true;
+      return input;
+    }
+  }
+
   // Reaction threshold based on CPU Level (1 to 9)
   // Level 1: very relaxed, idle pauses, beginner friendly so player can easily practice
   // Level 3: normal casual
@@ -134,33 +181,34 @@ export function calculateCpuInput(
   }
 
   // Attack selection when in range
-  if (dist < (cpuLevel <= 2 ? 65 : 85)) {
+  if (dist < (cpu.heldWeapon ? 95 : cpuLevel <= 2 ? 65 : 85)) {
     const actionRoll = Math.random();
+    const holdingMelee = !!cpu.heldWeapon && ITEM_DEFS[cpu.heldWeapon.kind].category === 'melee';
 
     // At Level 1, CPU is very polite: mostly idles, rarely attacks or grabs
     if (cpuLevel === 1) {
-      if (actionRoll < 0.08 && cpu.attack === null) {
+      if (actionRoll < 0.08 && cpu.attack === null && !cpu.heldWeapon) {
         input.grab = true;
-      } else if (actionRoll < 0.25) {
+      } else if (actionRoll < 0.35 || holdingMelee) {
         input.punch = true;
-      } else if (actionRoll < 0.35) {
+      } else if (actionRoll < 0.42) {
         input.kick = true;
       }
       // Otherwise stands or repositions, giving player time to hit
     } else if (cpuLevel === 2) {
-      if (actionRoll < 0.15 && cpu.attack === null) {
+      if (actionRoll < 0.15 && cpu.attack === null && !cpu.heldWeapon) {
         input.grab = true;
-      } else if (actionRoll < 0.45) {
+      } else if (actionRoll < 0.55 || holdingMelee) {
         input.punch = true;
-      } else if (actionRoll < 0.65) {
+      } else if (actionRoll < 0.7) {
         input.kick = true;
       }
     } else {
       // Normal / Advanced CPU
-      const grabChance = cpuLevel >= 6 ? 0.42 : 0.32;
+      const grabChance = holdingMelee ? 0 : cpuLevel >= 6 ? 0.42 : 0.32;
       if (actionRoll < grabChance && cpu.attack === null) {
         input.grab = true;
-      } else if (actionRoll < 0.72) {
+      } else if (actionRoll < 0.72 || holdingMelee) {
         input.punch = true;
         if (Math.abs(dy) > 30 && dy < 0) {
           input.up = true; // Up punch

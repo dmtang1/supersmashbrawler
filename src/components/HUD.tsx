@@ -16,7 +16,8 @@ import {
   X,
   ChevronLeft,
 } from 'lucide-react';
-import { Fighter, GameSettings, InputState } from '../types';
+import { Fighter, GameSettings, InputState, PERCENT_KO_THRESHOLD, SPRINT_STAMINA_MAX } from '../types';
+import { ITEM_DEFS } from '../items';
 
 interface HUDProps {
   p1: Fighter;
@@ -75,7 +76,46 @@ export const HUD: React.FC<HUDProps> = ({
   };
 
   const getMeterFillWidth = (pct: number) => {
-    return Math.min(100, Math.max(4, (pct / 150) * 100));
+    return Math.min(100, Math.max(4, (pct / PERCENT_KO_THRESHOLD) * 100));
+  };
+
+  const renderSprintBar = (fighter: Fighter, align: 'left' | 'right') => {
+    const pct = Math.min(100, Math.max(0, ((fighter.sprintStamina ?? SPRINT_STAMINA_MAX) / SPRINT_STAMINA_MAX) * 100));
+    const depleted = pct <= 0.5;
+    const low = pct < 22;
+    return (
+      <div className={`flex items-center gap-1.5 mt-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+        <div
+          className={`w-20 sm:w-32 md:w-40 h-1.5 bg-slate-950 border rounded-full overflow-hidden p-[1px] ${
+            depleted
+              ? 'border-rose-700'
+              : fighter.isSprinting
+              ? 'border-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.55)]'
+              : 'border-slate-700'
+          }`}
+        >
+          <div
+            className={`h-full rounded-full transition-[width] duration-75 ${
+              depleted
+                ? 'bg-slate-700'
+                : low
+                ? 'bg-gradient-to-r from-rose-500 to-orange-400'
+                : fighter.isSprinting
+                ? 'bg-gradient-to-r from-violet-500 to-fuchsia-400'
+                : 'bg-gradient-to-r from-indigo-500 to-violet-400'
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span
+          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${
+            depleted ? 'text-rose-400' : fighter.isSprinting ? 'text-violet-300' : 'text-slate-500'
+          }`}
+        >
+          {depleted ? 'Empty' : 'Sprint'}
+        </span>
+      </div>
+    );
   };
 
   const activeGrabber = p1.grab.role === 'grabber' ? p1 : p2.grab.role === 'grabber' ? p2 : null;
@@ -92,7 +132,7 @@ export const HUD: React.FC<HUDProps> = ({
       */}
       <header
         id="battle-header"
-        className="h-14 sm:h-16 w-full bg-slate-900/95 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 shadow-xl z-20"
+        className="h-[4.25rem] sm:h-[4.75rem] w-full bg-slate-900/95 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 shadow-xl z-20"
       >
         {/* PLAYER 1 HEALTH BAR & CARD (TOP-LEFT) */}
         <div id="p1-health-display" className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -123,6 +163,19 @@ export const HUD: React.FC<HUDProps> = ({
                   />
                 ))}
               </div>
+              {p1.heldWeapon && (
+                <span
+                  className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide border"
+                  style={{
+                    color: ITEM_DEFS[p1.heldWeapon.kind].glowColor,
+                    borderColor: `${ITEM_DEFS[p1.heldWeapon.kind].glowColor}88`,
+                    backgroundColor: `${ITEM_DEFS[p1.heldWeapon.kind].color}33`,
+                  }}
+                >
+                  {ITEM_DEFS[p1.heldWeapon.kind].name}
+                  <span className="font-mono text-slate-200">×{p1.heldWeapon.usesLeft}</span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2 mt-0.5">
@@ -143,6 +196,7 @@ export const HUD: React.FC<HUDProps> = ({
                 {Math.floor(p1.damagePercent)}%
               </span>
             </div>
+            {renderSprintBar(p1, 'left')}
           </div>
         </div>
 
@@ -251,6 +305,19 @@ export const HUD: React.FC<HUDProps> = ({
               <span className="text-xs sm:text-sm font-extrabold text-white tracking-wide">
                 {p2.stats.name}
               </span>
+              {p2.heldWeapon && (
+                <span
+                  className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide border"
+                  style={{
+                    color: ITEM_DEFS[p2.heldWeapon.kind].glowColor,
+                    borderColor: `${ITEM_DEFS[p2.heldWeapon.kind].glowColor}88`,
+                    backgroundColor: `${ITEM_DEFS[p2.heldWeapon.kind].color}33`,
+                  }}
+                >
+                  {ITEM_DEFS[p2.heldWeapon.kind].name}
+                  <span className="font-mono text-slate-200">×{p2.heldWeapon.usesLeft}</span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2 mt-0.5">
@@ -271,6 +338,7 @@ export const HUD: React.FC<HUDProps> = ({
                 />
               </div>
             </div>
+            {renderSprintBar(p2, 'right')}
           </div>
 
           <div
@@ -410,7 +478,7 @@ export const HUD: React.FC<HUDProps> = ({
                   <div className="flex items-center justify-between text-slate-300">
                     <div>
                       <span className="text-purple-300 font-bold block leading-tight">Sprint Dash</span>
-                      <span className="text-[9px] text-slate-500 font-sans">Momentum boost</span>
+                      <span className="text-[9px] text-slate-500 font-sans">Drains the sprint bar</span>
                     </div>
                     <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.sprint ? 'bg-purple-400 text-slate-950 border-purple-300 shadow-[0_0_8px_rgba(192,132,252,0.8)]' : 'bg-slate-800 border-slate-700 text-purple-200'}`}>SHIFT</kbd>
                   </div>
@@ -433,8 +501,8 @@ export const HUD: React.FC<HUDProps> = ({
                     <span><strong>Throws:</strong> While holding opponent (<code className="text-amber-300 font-bold">Q</code>), press <code className="text-amber-300 font-bold">W/S/A/D</code> to launch them.</span>
                   </li>
                   <li className="flex items-start gap-1">
-                    <span className="text-purple-400 font-bold">•</span>
-                    <span><strong>Double Jump:</strong> Jump in midair to recover back onto the stage.</span>
+                    <span className="text-rose-400 font-bold">•</span>
+                    <span><strong>Item Drops:</strong> Walk into glowing crates to grab guns, swords, hammers, bats, and bombs. <code className="text-amber-300 font-bold">Space</code> fires/swings. <code className="text-sky-300 font-bold">Q</code> tosses it.</span>
                   </li>
                 </ul>
               </div>

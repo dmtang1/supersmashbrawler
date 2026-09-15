@@ -15,8 +15,20 @@ import {
   renderFighter,
   renderOffscreenIndicators,
   renderParticles,
+  renderProjectiles,
   renderStage,
+  renderWorldItems,
 } from '../renderer';
+import {
+  createEmptyItemWorld,
+  dropEliminatedWeapons,
+  FIRST_ITEM_DELAY,
+  randomSpawnDelay,
+  spawnRandomItem,
+  tryPickupItems,
+  updateProjectiles,
+  updateWorldItems,
+} from '../items';
 
 interface GameCanvasProps {
   settings: GameSettings;
@@ -58,6 +70,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   );
 
   const particlesRef = useRef<Particle[]>([]);
+  const itemWorldRef = useRef(createEmptyItemWorld());
+  const itemSpawnTimerRef = useRef(FIRST_ITEM_DELAY);
   const animTickRef = useRef<number>(0);
   const hitstopFramesRef = useRef<number>(0);
 
@@ -96,6 +110,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     p2Ref.current.stocks = settings.stocks;
 
     particlesRef.current = [];
+    itemWorldRef.current = createEmptyItemWorld();
+    itemSpawnTimerRef.current = FIRST_ITEM_DELAY;
     cameraRef.current = {
       x: 700,
       y: 400,
@@ -249,7 +265,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         sprint: has('ShiftRight', 'KeyP', 'p'),
       };
     } else if (settings.mode === 'cpu') {
-      p2Input = calculateCpuInput(p2Ref.current, p1Ref.current, stageRef.current, settings.cpuLevel);
+      p2Input = calculateCpuInput(
+        p2Ref.current,
+        p1Ref.current,
+        stageRef.current,
+        settings.cpuLevel,
+        itemWorldRef.current.items
+      );
     } else {
       // Training Dummy: passive
       p2Input = {
@@ -296,7 +318,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           p1Input,
           stageRef.current,
           particlesRef.current,
-          addScreenShake
+          addScreenShake,
+          itemWorldRef.current
         );
 
         // Update Physics for P2
@@ -306,8 +329,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           p2Input,
           stageRef.current,
           particlesRef.current,
+          addScreenShake,
+          itemWorldRef.current
+        );
+
+        const fighters = [p1Ref.current, p2Ref.current];
+        updateWorldItems(itemWorldRef.current, stageRef.current, particlesRef.current);
+        tryPickupItems(itemWorldRef.current, fighters, particlesRef.current);
+        updateProjectiles(
+          itemWorldRef.current,
+          fighters,
+          stageRef.current,
+          particlesRef.current,
           addScreenShake
         );
+        dropEliminatedWeapons(fighters, itemWorldRef.current, particlesRef.current);
+
+        itemSpawnTimerRef.current--;
+        if (itemSpawnTimerRef.current <= 0) {
+          spawnRandomItem(itemWorldRef.current, stageRef.current, particlesRef.current);
+          itemSpawnTimerRef.current = randomSpawnDelay();
+        }
 
         // Check Win Condition
         if (p1Ref.current.stocks <= 0 && !gameOverTriggered.current) {
@@ -361,11 +403,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // 1. Stage & Background
       renderStage(ctx, stageRef.current, 1400, 800);
 
-      // 2. Fighters
+      // 2. Item crates
+      renderWorldItems(ctx, itemWorldRef.current.items, animTickRef.current);
+
+      // 3. Fighters
       renderFighter(ctx, p1, animTickRef.current);
       renderFighter(ctx, p2, animTickRef.current);
 
-      // 3. Particles
+      // 4. Projectiles
+      renderProjectiles(ctx, itemWorldRef.current.projectiles);
+
+      // 5. Particles
       renderParticles(ctx, particlesRef.current);
 
       ctx.restore();

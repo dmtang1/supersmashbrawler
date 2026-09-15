@@ -45,6 +45,56 @@ export type ActionType =
   | 'ledge_hang'
   | 'ledge_climb';
 
+/** Hitting this damage % instantly explodes the fighter and costs a stock. */
+export const PERCENT_KO_THRESHOLD = 150;
+
+/** Sprint stamina pool. Drains while dashing, regenerates while walking/idle. */
+export const SPRINT_STAMINA_MAX = 100;
+
+export type ItemKind = 'blaster' | 'raygun' | 'sword' | 'beam_sword' | 'hammer' | 'bat' | 'bomb';
+export type ItemCategory = 'ranged' | 'melee' | 'throwable';
+
+export interface HeldWeapon {
+  kind: ItemKind;
+  usesLeft: number;
+}
+
+export interface WorldItem {
+  id: number;
+  kind: ItemKind;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  isGrounded: boolean;
+  lifetime: number;
+  bob: number;
+  pickupLock: number;
+}
+
+export interface Projectile {
+  id: number;
+  kind: 'bullet' | 'laser' | 'bomb';
+  ownerIndex: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  knockbackBase: number;
+  knockbackGrowth: number;
+  radius: number;
+  lifetime: number;
+  color: string;
+  ownerIgnoreFrames: number;
+  bounces: number;
+}
+
+export interface ItemWorld {
+  items: WorldItem[];
+  projectiles: Projectile[];
+}
+
 export interface AttackState {
   type: 'punch' | 'kick' | 'grab' | 'throw_fwd' | 'throw_back' | 'throw_up' | 'throw_down';
   frame: number;
@@ -54,6 +104,7 @@ export interface AttackState {
   hitLanded: boolean;
   hitTargets?: number[];
   direction?: 'up' | 'down' | 'forward' | 'back' | 'neutral';
+  weaponKind?: ItemKind;
 }
 
 export interface GrabInfo {
@@ -84,6 +135,7 @@ export interface Fighter {
   doubleJumpsLeft: number;
   jumpReleased?: boolean;
   isSprinting: boolean;
+  sprintStamina: number;
   isCrouching: boolean;
 
   // Battle State
@@ -120,6 +172,9 @@ export interface Fighter {
   shadowPhaseTimer?: number; // intangible dash for Shinobi
   hasSuperArmor?: boolean; // Titan heavy poise
   wingFlapTick?: number;
+
+  // Smash-style item / weapon currently in hand
+  heldWeapon: HeldWeapon | null;
 }
 
 export interface Platform {

@@ -1,4 +1,5 @@
-import { CameraState, Fighter, Particle, Stage } from './types';
+import { CameraState, Fighter, ItemKind, Particle, Projectile, Stage, WorldItem } from './types';
+import { ITEM_DEFS } from './items';
 
 export function renderStage(
   ctx: CanvasRenderingContext2D,
@@ -111,6 +112,8 @@ export function renderFighter(
   fighter: Fighter,
   animTick: number
 ) {
+  if (fighter.stocks <= 0) return;
+
   // If in respawn halo platform
   if (fighter.respawnTimer > 0) {
     renderRespawnHalo(ctx, fighter);
@@ -410,6 +413,8 @@ function drawFighterModel(
     ctx.lineTo(8 + walkCycle * 8, bodyY + 8);
     ctx.stroke();
   }
+
+  drawHeldWeapon(ctx, fighter, bodyY, animTick);
 
   // 6. Creature Status Effects & Visual Auras
   drawFighterStatusEffects(ctx, fighter, bodyY, headY, animTick);
@@ -1071,6 +1076,254 @@ function renderRespawnHalo(ctx: CanvasRenderingContext2D, fighter: Fighter) {
   // Draw Fighter hovering
   drawFighterModel(ctx, 0, 0, fighter, 0, false);
 
+  ctx.restore();
+}
+
+function drawHeldWeapon(
+  ctx: CanvasRenderingContext2D,
+  fighter: Fighter,
+  bodyY: number,
+  animTick: number
+) {
+  const kind = fighter.heldWeapon?.kind || fighter.attack?.weaponKind;
+  if (!kind) return;
+
+  const swinging = fighter.currentAction === 'punch' && !!fighter.attack?.weaponKind;
+  const handX = swinging ? 28 : 16;
+  const handY = swinging ? bodyY - 8 : bodyY + 2;
+  ctx.save();
+  ctx.translate(handX, handY);
+  if (swinging) {
+    const dir = fighter.attack?.direction;
+    if (dir === 'up') ctx.rotate(-0.9);
+    else if (dir === 'down') ctx.rotate(1.1);
+    else ctx.rotate(-0.35);
+  } else {
+    ctx.rotate(-0.2 + Math.sin(animTick * 0.08) * 0.05);
+  }
+  drawItemGlyph(ctx, kind, 1.05);
+  ctx.restore();
+}
+
+export function renderWorldItems(ctx: CanvasRenderingContext2D, items: WorldItem[], animTick: number) {
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    if (item.lifetime < 180 && Math.floor(item.lifetime / 8) % 2 === 0) continue;
+    const def = ITEM_DEFS[item.kind];
+    const bobY = Math.sin(item.bob * 0.12) * 4;
+    const x = item.x;
+    const y = item.y + bobY;
+
+    ctx.save();
+    // Landing shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(item.x, item.y + 14, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Capsule glow
+    ctx.shadowColor = def.glowColor;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.strokeStyle = def.glowColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x - 16, y - 22, 32, 34, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner shine
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `${def.glowColor}33`;
+    ctx.beginPath();
+    ctx.roundRect(x - 12, y - 18, 24, 12, 6);
+    ctx.fill();
+
+    ctx.translate(x, y - 4);
+    drawItemGlyph(ctx, item.kind, 0.92);
+    ctx.restore();
+
+    // Name tag
+    ctx.save();
+    ctx.font = '900 10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#0f172a';
+    ctx.fillStyle = def.glowColor;
+    ctx.strokeText(def.name, x, y - 28 - (idx % 2) * 11);
+    ctx.fillText(def.name, x, y - 28 - (idx % 2) * 11);
+    ctx.restore();
+
+    // Pulse ring
+    if (animTick % 40 < 18) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = def.glowColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 20 + (animTick % 40) * 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+export function renderProjectiles(ctx: CanvasRenderingContext2D, projectiles: Projectile[]) {
+  for (const proj of projectiles) {
+    ctx.save();
+    ctx.translate(proj.x, proj.y);
+    ctx.shadowColor = proj.color;
+    ctx.shadowBlur = 12;
+
+    if (proj.kind === 'laser') {
+      const len = 22;
+      ctx.rotate(Math.atan2(proj.vy, proj.vx));
+      ctx.fillStyle = proj.color;
+      ctx.beginPath();
+      ctx.roundRect(-len / 2, -3, len, 6, 3);
+      ctx.fill();
+      ctx.fillStyle = '#ecfdf5';
+      ctx.beginPath();
+      ctx.roundRect(-len / 2 + 4, -1.5, len - 8, 3, 2);
+      ctx.fill();
+    } else if (proj.kind === 'bomb') {
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fb7185';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath();
+      ctx.arc(3, -8, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = proj.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-1.5, -1.5, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawItemGlyph(ctx: CanvasRenderingContext2D, kind: ItemKind, scale: number) {
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  switch (kind) {
+    case 'blaster': {
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(-2, -4, 16, 7);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(-8, -2, 8, 9);
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(14, -0.5, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'raygun': {
+      ctx.fillStyle = '#16a34a';
+      ctx.beginPath();
+      ctx.roundRect(-6, -5, 12, 10, 3);
+      ctx.fill();
+      ctx.fillStyle = '#4ade80';
+      ctx.fillRect(4, -3, 14, 5);
+      ctx.fillStyle = '#bbf7d0';
+      ctx.beginPath();
+      ctx.arc(18, -0.5, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'sword': {
+      ctx.strokeStyle = '#94a3b8';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 8);
+      ctx.lineTo(0, -18);
+      ctx.lineTo(4, -14);
+      ctx.lineTo(4, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(-5, 6, 14, 4);
+      ctx.fillRect(-1.5, 8, 5, 8);
+      break;
+    }
+    case 'beam_sword': {
+      ctx.shadowColor = '#22d3ee';
+      ctx.shadowBlur = 12;
+      const blade = ctx.createLinearGradient(0, 12, 0, -22);
+      blade.addColorStop(0, '#22d3ee');
+      blade.addColorStop(1, '#ecfeff');
+      ctx.fillStyle = blade;
+      ctx.beginPath();
+      ctx.roundRect(-2.5, -22, 5, 28, 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#0e7490';
+      ctx.fillRect(-5, 6, 10, 4);
+      ctx.fillRect(-2, 8, 4, 7);
+      break;
+    }
+    case 'hammer': {
+      ctx.fillStyle = '#92400e';
+      ctx.fillRect(-2, -4, 4, 18);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-10, -14, 20, 12, 2);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case 'bat': {
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-2, 12);
+      ctx.lineTo(4, -18);
+      ctx.stroke();
+      ctx.strokeStyle = '#fcd34d';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(2, -8);
+      ctx.lineTo(5, -18);
+      ctx.stroke();
+      break;
+    }
+    case 'bomb': {
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, 2, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fb7185';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(4, -5);
+      ctx.quadraticCurveTo(8, -12, 6, -16);
+      ctx.stroke();
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath();
+      ctx.arc(6, -16, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+  }
   ctx.restore();
 }
 
