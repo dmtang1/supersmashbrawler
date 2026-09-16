@@ -193,7 +193,8 @@ export function updateFighterPhysics(
     !!fighter.ledgeHang ||
     fighter.hitstun > 0 ||
     !!fighter.attack ||
-    fighter.grab.role !== 'none';
+    fighter.grab.role !== 'none' ||
+    fighter.currentAction === 'block';
   updateSprintStamina(
     fighter,
     !sprintLocked &&
@@ -467,24 +468,26 @@ export function updateFighterPhysics(
 
   // Horizontal movement
   const frostMult = fighter.frostbiteTimer && fighter.frostbiteTimer > 0 ? 0.6 : 1;
+  const isBlocking = input.block && fighter.isGrounded && !fighter.ledgeHang;
+  const blockMult = isBlocking ? 0.28 : 1;
   const targetSpeed =
-    (fighter.isSprinting ? fighter.stats.sprintSpeed : fighter.stats.walkSpeed) * frostMult;
+    (fighter.isSprinting ? fighter.stats.sprintSpeed : fighter.stats.walkSpeed) * frostMult * blockMult;
 
   if (input.left) {
     fighter.vx = -targetSpeed;
     fighter.facing = -1;
-    if (fighter.isGrounded) {
+    if (fighter.isGrounded && !isBlocking) {
       fighter.currentAction = fighter.isSprinting ? 'sprint' : 'walk';
     }
   } else if (input.right) {
     fighter.vx = targetSpeed;
     fighter.facing = 1;
-    if (fighter.isGrounded) {
+    if (fighter.isGrounded && !isBlocking) {
       fighter.currentAction = fighter.isSprinting ? 'sprint' : 'walk';
     }
   } else {
     fighter.vx *= fighter.isGrounded ? GROUND_FRICTION : AIR_DRAG;
-    if (fighter.isGrounded && !fighter.isCrouching) {
+    if (fighter.isGrounded && !fighter.isCrouching && !isBlocking) {
       fighter.currentAction = 'idle';
     }
   }
@@ -568,8 +571,12 @@ export function updateFighterPhysics(
     fighter.vy = Math.min(fighter.vy + 1.2, TERMINAL_VELOCITY);
   }
 
-  // Initiate Attacks
-  if (input.grab) {
+  // Hold B to block punches/kicks (grabs still break through)
+  const guarding = input.block && fighter.isGrounded && !fighter.ledgeHang;
+  if (guarding) {
+    fighter.currentAction = 'block';
+    fighter.isSprinting = false;
+  } else if (input.grab) {
     if (fighter.heldWeapon) {
       tossHeldWeapon(fighter, itemWorld, particles);
       fighter.attack = {
@@ -826,6 +833,26 @@ function startKick(fighter: Fighter, input: InputState) {
   }
 }
 
+function isFacingBlock(defender: Fighter, threatX: number): boolean {
+  if (defender.currentAction !== 'block') return false;
+  const towardThreat: 1 | -1 = threatX >= defender.x ? 1 : -1;
+  return defender.facing === towardThreat;
+}
+
+function resolveBlockedHit(
+  attacker: Fighter,
+  defender: Fighter,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void
+) {
+  sound.playBlock();
+  defender.vx = attacker.facing * -1.2;
+  attacker.vx = attacker.facing * -2.4;
+  addScreenShake(2, 5);
+  createBreakSparks(defender.x + defender.facing * 18, defender.y - 4, particles);
+  createHitText(defender.x, defender.y - 32, 'BLOCK!', '#38bdf8', particles);
+}
+
 function checkAttackHit(
   attacker: Fighter,
   defender: Fighter,
@@ -839,20 +866,28 @@ function checkAttackHit(
   const isWeapon = !!weaponDef && weaponDef.category === 'melee';
 
   // Hitbox detection
-  const reach = isWeapon ? weaponDef.reach : atk.type === 'kick' ? 62 : 48;
+  const reach = isWeapon ? weaponDef.reach : atk.type === 'kick' ? 50 : 48;
   const hitYOffset = atk.direction === 'up' ? -40 : atk.direction === 'down' ? 40 : 0;
   const hitXOffset = atk.direction === 'up' || atk.direction === 'down' ? 0 : attacker.facing * reach;
 
   const hitbox = {
     x: attacker.x + hitXOffset,
     y: attacker.y + hitYOffset,
-    radius: isWeapon ? weaponDef.hitRadius : atk.type === 'kick' ? 38 : 30,
+    radius: isWeapon ? weaponDef.hitRadius : 30,
   };
 
   const dist = Math.hypot(hitbox.x - defender.x, hitbox.y - defender.y);
 
   if (dist < hitbox.radius + defender.width / 2) {
     atk.hitLanded = true;
+
+    // Punches, kicks, and weapon swings are blocked; grabs still connect through guard
+    const isBlockable = atk.type === 'punch' || atk.type === 'kick';
+    if (isBlockable && isFacingBlock(defender, attacker.x)) {
+      resolveBlockedHit(attacker, defender, particles, addScreenShake);
+      return;
+    }
+
     const isKick = atk.type === 'kick';
     const baseDamage = isWeapon
       ? weaponDef.damage

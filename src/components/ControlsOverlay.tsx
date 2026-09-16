@@ -27,7 +27,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
           </div>
           <div>
             <h2 className="text-xl font-black tracking-tight text-white">Battle Controls Guide</h2>
-            <p className="text-xs text-slate-400">Master movement, punches, kicks, grabs, item weapons, and 4-way throws</p>
+            <p className="text-xs text-slate-400">Master movement, punches, kicks, blocks, grabs, item weapons, and 4-way throws</p>
           </div>
         </div>
 
@@ -65,13 +65,19 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
               <li className="flex items-center justify-between">
                 <span className="text-slate-300 font-semibold text-rose-300">Kick Attack</span>
                 <kbd className="px-3 py-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded font-mono text-xs font-bold">
-                  F
+                  C
+                </kbd>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="text-slate-300 font-semibold text-cyan-300">Block / Guard</span>
+                <kbd className="px-3 py-1 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded font-mono text-xs font-bold">
+                  B
                 </kbd>
               </li>
               <li className="flex items-center justify-between">
                 <span className="text-slate-300 font-semibold text-sky-300">Grab Opponent</span>
                 <kbd className="px-3 py-1 bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded font-mono text-xs font-bold">
-                  Q
+                  V
                 </kbd>
               </li>
             </ul>
@@ -84,7 +90,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
               Directional Grab Throws
             </h3>
             <p className="text-xs text-slate-400 mb-2.5">
-              Press <span className="text-sky-300 font-bold">Q</span> to grab, then input a direction:
+              Press <span className="text-sky-300 font-bold">V</span> to grab, then input a direction:
             </p>
             <ul className="space-y-2">
               <li className="flex items-center justify-between bg-slate-900/60 p-2 rounded-lg border border-slate-800">
@@ -92,28 +98,28 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
                   <ArrowUp className="w-3.5 h-3.5 text-sky-400" />
                   <span>Toss Up</span>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">Q + W</span>
+                <span className="text-[11px] font-mono text-slate-400">V + W</span>
               </li>
               <li className="flex items-center justify-between bg-slate-900/60 p-2 rounded-lg border border-amber-500/30">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
                   <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
                   <span>Toss Down & Bounce!</span>
                 </div>
-                <span className="text-[11px] font-mono text-amber-300 font-bold">Q + S</span>
+                <span className="text-[11px] font-mono text-amber-300 font-bold">V + S</span>
               </li>
               <li className="flex items-center justify-between bg-slate-900/60 p-2 rounded-lg border border-slate-800">
                 <div className="flex items-center gap-1.5 text-xs text-slate-200">
                   <ArrowRight className="w-3.5 h-3.5 text-sky-400" />
                   <span>Throw Forward</span>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">Q + D</span>
+                <span className="text-[11px] font-mono text-slate-400">V + D</span>
               </li>
               <li className="flex items-center justify-between bg-slate-900/60 p-2 rounded-lg border border-slate-800">
                 <div className="flex items-center gap-1.5 text-xs text-slate-200">
                   <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
                   <span>Toss The Other Way</span>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">Q + A</span>
+                <span className="text-[11px] font-mono text-slate-400">V + A</span>
               </li>
             </ul>
           </div>
@@ -126,7 +132,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
             <span>Item Drops Every Match</span>
           </div>
           <p className="text-slate-300 text-[11px] leading-relaxed">
-            Weapon crates fall onto the stage throughout the fight — blasters, ray guns, swords, beam swords, hammers, home-run bats, and bombs. Walk into a crate to pick it up. Punch uses the weapon; grab tosses it away.
+            Weapon crates fall onto the stage throughout the fight — blasters, ray guns, swords, beam swords, hammers, home-run bats, and bombs. Walk into a crate to pick it up. Punch uses the weapon; grab (<span className="text-sky-300 font-bold">V</span>) tosses it away. Hold <span className="text-cyan-300 font-bold">B</span> to block punches, kicks, and shots from the front.
           </p>
         </div>
 
@@ -160,10 +166,16 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
           <div className="mt-4 p-3 bg-sky-950/40 border border-sky-800/60 rounded-xl text-xs flex items-center justify-between">
             <span className="text-sky-200 font-medium">Player 2 Keys:</span>
             <span className="font-mono text-slate-300">
-              Arrows: Move | Enter: Punch | L: Kick | K: Grab | RShift: Sprint
+              Arrows: Move | Enter: Punch | L: Kick | K: Grab | O: Block | RShift: Sprint
             </span>
           </div>
         )}
+
+        <div className="mt-4 p-3 bg-slate-800/50 border border-slate-700/60 rounded-xl text-xs text-slate-300">
+          <span className="text-sky-300 font-bold">Touch / iPad:</span> On phones and tablets, translucent pads appear in the
+          lower corners (left = move + sprint, right = jump / attacks / block). They stay out of the center of the arena.
+          Use the phone icon in the header to hide them if you pair a keyboard or controller.
+        </div>
 
         <div className="mt-6 flex justify-end">
           <button

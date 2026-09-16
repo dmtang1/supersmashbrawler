@@ -15,15 +15,17 @@ import {
   ArrowLeft,
   X,
   ChevronLeft,
+  Smartphone,
 } from 'lucide-react';
 import { Fighter, GameSettings, InputState, PERCENT_KO_THRESHOLD, SPRINT_STAMINA_MAX } from '../types';
 import { ITEM_DEFS } from '../items';
+import { TouchControls } from './TouchControls';
 
 interface HUDProps {
   p1: Fighter;
   p2: Fighter;
   settings: GameSettings;
-  matchTime: number; // in seconds
+  matchTime: number; // remaining seconds (countdown)
   isPaused: boolean;
   onTogglePause: () => void;
   onRestart: () => void;
@@ -32,9 +34,11 @@ interface HUDProps {
   onOpenSettings: () => void;
   onBackToSelect?: () => void;
   activeKeys?: InputState;
+  isTouchDevice?: boolean;
   showTouchControls?: boolean;
   onToggleTouchControls?: () => void;
-  onVirtualKey?: (action: keyof InputState, isDown: boolean, code?: string) => void;
+  onVirtualKey?: (action: keyof InputState, isDown: boolean) => void;
+  onReleaseAllVirtual?: () => void;
   children?: React.ReactNode;
 }
 
@@ -50,6 +54,11 @@ export const HUD: React.FC<HUDProps> = ({
   onOpenControls,
   onBackToSelect,
   activeKeys,
+  isTouchDevice,
+  showTouchControls,
+  onToggleTouchControls,
+  onVirtualKey,
+  onReleaseAllVirtual,
   children,
 }) => {
   // Minimized by default so the arena has 100% full screen space
@@ -216,7 +225,15 @@ export const HUD: React.FC<HUDProps> = ({
           ) : null}
 
           {/* Match Timer */}
-          <div className="bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-full flex items-center gap-2 shadow-inner">
+          <div
+            className={`bg-slate-950/80 border px-3 py-1 rounded-full flex items-center gap-2 shadow-inner ${
+              matchTime <= 10
+                ? 'border-red-500/70 shadow-[0_0_12px_rgba(239,68,68,0.35)]'
+                : matchTime <= 30
+                ? 'border-amber-500/60'
+                : 'border-slate-800'
+            }`}
+          >
             <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
               {settings.mode === 'cpu'
                 ? `VS CPU (LVL ${settings.cpuLevel})`
@@ -224,13 +241,36 @@ export const HUD: React.FC<HUDProps> = ({
                 ? '2-PLAYER'
                 : 'TRAINING'}
             </span>
-            <span className="text-xs sm:text-sm font-black text-white font-mono tracking-wider sm:border-l sm:border-slate-800 sm:pl-2">
+            <span
+              className={`text-xs sm:text-sm font-black font-mono tracking-wider sm:border-l sm:border-slate-800 sm:pl-2 ${
+                matchTime <= 10
+                  ? 'text-red-400 animate-pulse'
+                  : matchTime <= 30
+                  ? 'text-amber-300'
+                  : 'text-white'
+              }`}
+            >
               {formatTime(matchTime)}
             </span>
           </div>
 
           {/* Quick Header Buttons (Consolidated, Zero Floating Screen Clutter) */}
           <div className="flex items-center gap-1">
+            {isTouchDevice && onToggleTouchControls && (
+              <button
+                id="header-touch-controls-toggle"
+                onClick={onToggleTouchControls}
+                title={showTouchControls ? 'Hide on-screen controls' : 'Show on-screen controls'}
+                className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                  showTouchControls
+                    ? 'bg-sky-500/25 text-sky-300 border-sky-500/60'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             <button
               id="header-side-panel-toggle"
               onClick={() => setShowSidePanel((prev) => !prev)}
@@ -242,7 +282,7 @@ export const HUD: React.FC<HUDProps> = ({
               }`}
             >
               <Gamepad2 className="w-3.5 h-3.5 text-sky-400" />
-              <span className="text-[11px] font-semibold">Controls</span>
+              <span className="text-[11px] font-semibold hidden sm:inline">Controls</span>
             </button>
 
             <button
@@ -368,8 +408,16 @@ export const HUD: React.FC<HUDProps> = ({
         >
           {children}
 
-          {/* Quick Peek Edge Tab when minimized (Unobtrusive right-edge tab to open controls) */}
-          {!showSidePanel && (
+          {onVirtualKey && onReleaseAllVirtual && (
+            <TouchControls
+              visible={!!isTouchDevice && !!showTouchControls && !isPaused}
+              onVirtualKey={onVirtualKey}
+              onReleaseAll={onReleaseAllVirtual}
+            />
+          )}
+
+          {/* Keyboard guide tab — hide while touch pads occupy the right thumb zone */}
+          {!showSidePanel && !(isTouchDevice && showTouchControls) && (
             <button
               id="edge-controls-open-btn"
               onClick={() => setShowSidePanel(true)}
@@ -464,7 +512,7 @@ export const HUD: React.FC<HUDProps> = ({
                       <span className="text-rose-300 font-bold block leading-tight">Kick / Smash</span>
                       <span className="text-[9px] text-slate-500 font-sans">High knockback finisher</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.kick ? 'bg-rose-400 text-slate-950 border-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'bg-slate-800 border-slate-700 text-rose-200'}`}>F</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.kick ? 'bg-rose-400 text-slate-950 border-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'bg-slate-800 border-slate-700 text-rose-200'}`}>C</kbd>
                   </div>
 
                   <div className="flex items-center justify-between text-slate-300">
@@ -472,7 +520,15 @@ export const HUD: React.FC<HUDProps> = ({
                       <span className="text-sky-300 font-bold block leading-tight">Grab & Throw</span>
                       <span className="text-[9px] text-slate-500 font-sans">Holds shield / opponent</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.grab ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'bg-slate-800 border-slate-700 text-sky-200'}`}>Q</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.grab ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'bg-slate-800 border-slate-700 text-sky-200'}`}>V</kbd>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-300">
+                    <div>
+                      <span className="text-cyan-300 font-bold block leading-tight">Block / Guard</span>
+                      <span className="text-[9px] text-slate-500 font-sans">Negates punches & kicks</span>
+                    </div>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.block ? 'bg-cyan-400 text-slate-950 border-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]' : 'bg-slate-800 border-slate-700 text-cyan-200'}`}>B</kbd>
                   </div>
 
                   <div className="flex items-center justify-between text-slate-300">
@@ -493,16 +549,20 @@ export const HUD: React.FC<HUDProps> = ({
                 </div>
                 <ul className="space-y-1 text-[10px] text-slate-300 leading-tight">
                   <li className="flex items-start gap-1">
+                    <span className="text-cyan-400 font-bold">•</span>
+                    <span><strong>Block:</strong> Hold <code className="text-cyan-300 font-bold">B</code> while facing the attacker to negate punches, kicks, and projectiles. Grabs still break through!</span>
+                  </li>
+                  <li className="flex items-start gap-1">
                     <span className="text-emerald-400 font-bold">•</span>
                     <span><strong>Ledge Sweetspot:</strong> Near edge, you auto-snap to ledge. Press <code className="text-sky-300 font-bold">W</code> to jump or <code className="text-sky-300 font-bold">Space</code> to climb-attack!</span>
                   </li>
                   <li className="flex items-start gap-1">
                     <span className="text-amber-400 font-bold">•</span>
-                    <span><strong>Throws:</strong> While holding opponent (<code className="text-amber-300 font-bold">Q</code>), press <code className="text-amber-300 font-bold">W/S/A/D</code> to launch them.</span>
+                    <span><strong>Throws:</strong> While holding opponent (<code className="text-amber-300 font-bold">V</code>), press <code className="text-amber-300 font-bold">W/S/A/D</code> to launch them.</span>
                   </li>
                   <li className="flex items-start gap-1">
                     <span className="text-rose-400 font-bold">•</span>
-                    <span><strong>Item Drops:</strong> Walk into glowing crates to grab guns, swords, hammers, bats, and bombs. <code className="text-amber-300 font-bold">Space</code> fires/swings. <code className="text-sky-300 font-bold">Q</code> tosses it.</span>
+                    <span><strong>Item Drops:</strong> Walk into glowing crates to grab guns, swords, hammers, bats, and bombs. <code className="text-amber-300 font-bold">Space</code> fires/swings. <code className="text-sky-300 font-bold">V</code> tosses it.</span>
                   </li>
                 </ul>
               </div>

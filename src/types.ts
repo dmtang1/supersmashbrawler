@@ -34,6 +34,7 @@ export type ActionType =
   | 'crouch'
   | 'punch'
   | 'kick'
+  | 'block'
   | 'grab'
   | 'grabbed'
   | 'throw_fwd'
@@ -237,6 +238,8 @@ export interface GameSettings {
   mode: GameMode;
   cpuLevel: number; // 1 to 9
   stocks: number;
+  /** Match time limit in seconds (countdown). */
+  matchDuration: number;
   stageId: string;
   playerCount: 2 | 3 | 4;
   p1Fighter: FighterId;
@@ -255,5 +258,6 @@ export interface InputState {
   punch: boolean;
   kick: boolean;
   grab: boolean;
+  block: boolean;
   sprint: boolean;
 }

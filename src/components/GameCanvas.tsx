@@ -87,6 +87,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   });
 
   const gameOverTriggered = useRef<boolean>(false);
+  // Keep virtual (touch) input in a ref so the rAF loop never reads a stale prop closure
+  const virtualInputRef = useRef<InputState | undefined>(virtualInput);
+  useEffect(() => {
+    virtualInputRef.current = virtualInput;
+  }, [virtualInput]);
 
   // Initialize or Reset Match
   const resetMatch = useCallback(() => {
@@ -160,9 +165,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (e.keyCode === 83) tokens.push('keys', 's'); // S
       if (e.keyCode === 68) tokens.push('keyd', 'd'); // D
       if (e.keyCode === 32) tokens.push('space', ' '); // Space
-      if (e.keyCode === 70) tokens.push('keyf', 'f'); // F
-      if (e.keyCode === 81) tokens.push('keyq', 'q'); // Q
-      if (e.keyCode === 16) tokens.push('shift', 'shiftleft', 'shiftright'); // Shift
+      if (e.keyCode === 66) tokens.push('keyb', 'b'); // B block
+      if (e.keyCode === 67) tokens.push('keyc', 'c'); // C kick
+      if (e.keyCode === 86) tokens.push('keyv', 'v'); // V grab
+      if (e.keyCode === 70) tokens.push('keyf', 'f'); // F (legacy kick alias)
+      if (e.keyCode === 81) tokens.push('keyq', 'q'); // Q (legacy grab alias)
+      if (e.keyCode === 16) {
+        tokens.push('shift');
+        // location 1 = left, 2 = right — never mark both or 2P sprint overlaps
+        if (e.location === 1) tokens.push('shiftleft');
+        else if (e.location === 2) tokens.push('shiftright');
+      }
       if (e.keyCode === 38) tokens.push('arrowup', 'up');
       if (e.keyCode === 40) tokens.push('arrowdown', 'down');
       if (e.keyCode === 37) tokens.push('arrowleft', 'left');
@@ -225,18 +238,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const has = (...aliases: string[]) => aliases.some((a) => keys.has(a) || keys.has(a.toLowerCase()));
 
-    // Player 1 Input: WASD, Space (Punch), F (Kick), Q (Grab), Shift (Sprint)
-    // Also supports Arrow Keys, French AZERTY (Z for up), and alternative keys
-    const p1Input: InputState = {
-      up: (has('KeyW', 'w', 'ArrowUp', 'up', 'z', 'KeyZ') || !!virtualInput?.up),
-      down: (has('KeyS', 's', 'ArrowDown', 'down') || !!virtualInput?.down),
-      left: (has('KeyA', 'a', 'ArrowLeft', 'left') || !!virtualInput?.left),
-      right: (has('KeyD', 'd', 'ArrowRight', 'right') || !!virtualInput?.right),
-      punch: (has('Space', ' ', 'Enter', 'enter', 'j', 'KeyJ', 'Numpad0') || !!virtualInput?.punch),
-      kick: (has('KeyF', 'f', 'k', 'KeyK', 'KeyL', 'l', 'x') || !!virtualInput?.kick),
-      grab: (has('KeyQ', 'q', 'g', 'KeyG', 'e', 'KeyE', 'c') || !!virtualInput?.grab),
-      sprint: (has('ShiftLeft', 'ShiftRight', 'Shift', 'shift') || !!virtualInput?.sprint),
-    };
+    // Player 1: WASD + Space/C/V/B/Shift. In solo/CPU, also allow arrows & aliases.
+    // In 2P, arrows and P2 action keys must NOT drive P1 or both fighters move together.
+    const touch = virtualInputRef.current;
+    const p1Input: InputState = is2P
+      ? {
+          up: (has('KeyW', 'w', 'z', 'KeyZ') || !!touch?.up),
+          down: (has('KeyS', 's') || !!touch?.down),
+          left: (has('KeyA', 'a') || !!touch?.left),
+          right: (has('KeyD', 'd') || !!touch?.right),
+          punch: (has('Space', ' ', 'j', 'KeyJ') || !!touch?.punch),
+          kick: (has('KeyC', 'c', 'x') || !!touch?.kick),
+          grab: (has('KeyV', 'v', 'g', 'KeyG') || !!touch?.grab),
+          block: (has('KeyB', 'b') || !!touch?.block),
+          sprint: (has('ShiftLeft') || !!touch?.sprint),
+        }
+      : {
+          up: (has('KeyW', 'w', 'ArrowUp', 'up', 'z', 'KeyZ') || !!touch?.up),
+          down: (has('KeyS', 's', 'ArrowDown', 'down') || !!touch?.down),
+          left: (has('KeyA', 'a', 'ArrowLeft', 'left') || !!touch?.left),
+          right: (has('KeyD', 'd', 'ArrowRight', 'right') || !!touch?.right),
+          punch: (has('Space', ' ', 'Enter', 'enter', 'j', 'KeyJ', 'Numpad0') || !!touch?.punch),
+          kick: (has('KeyC', 'c', 'x', 'KeyF', 'f') || !!touch?.kick),
+          grab: (has('KeyV', 'v', 'g', 'KeyG', 'KeyQ', 'q') || !!touch?.grab),
+          block: (has('KeyB', 'b') || !!touch?.block),
+          sprint: (has('ShiftLeft', 'ShiftRight', 'Shift', 'shift') || !!touch?.sprint),
+        };
 
     if (onActiveInputState) {
       onActiveInputState(p1Input);
@@ -250,6 +277,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       punch: false,
       kick: false,
       grab: false,
+      block: false,
       sprint: false,
     };
 
@@ -262,6 +290,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         punch: has('Enter', 'enter', 'NumpadEnter', 'Slash', '/'),
         kick: has('KeyL', 'l', 'Numpad2'),
         grab: has('KeyK', 'k', 'Period', '.', 'Numpad3'),
+        block: has('KeyO', 'o', 'Comma', ','),
         sprint: has('ShiftRight', 'KeyP', 'p'),
       };
     } else if (settings.mode === 'cpu') {
@@ -282,6 +311,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         punch: false,
         kick: false,
         grab: false,
+        block: false,
         sprint: false,
       };
     }
@@ -400,8 +430,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.scale(cam.zoom, cam.zoom);
       ctx.translate(-cam.x, -cam.y);
 
-      // 1. Stage & Background
-      renderStage(ctx, stageRef.current, 1400, 800);
+      // 1. Stage & Background (fills the full camera view on every stage)
+      renderStage(ctx, stageRef.current, cam, width, height);
 
       // 2. Item crates
       renderWorldItems(ctx, itemWorldRef.current.items, animTickRef.current);

@@ -142,6 +142,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Match Time Limit */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block">
+              Match Time Limit
+            </label>
+            <div className="flex gap-2">
+              {[
+                { secs: 60, label: '1 Min' },
+                { secs: 120, label: '2 Min' },
+                { secs: 180, label: '3 Min' },
+                { secs: 300, label: '5 Min' },
+              ].map(({ secs, label }) => (
+                <button
+                  key={secs}
+                  id={`duration-${secs}-btn`}
+                  onClick={() => onUpdateSettings({ ...settings, matchDuration: secs })}
+                  className={`flex-1 py-2 rounded-xl border font-bold text-xs transition cursor-pointer ${
+                    settings.matchDuration === secs
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Fighter Select Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* P1 Fighter */}

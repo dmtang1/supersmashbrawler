@@ -1,37 +1,65 @@
-import { CameraState, Fighter, ItemKind, Particle, Projectile, Stage, WorldItem } from './types';
+import {
+  CameraState,
+  Fighter,
+  FighterId,
+  FighterStats,
+  ItemKind,
+  Particle,
+  Projectile,
+  Stage,
+  SPRINT_STAMINA_MAX,
+  WorldItem,
+} from './types';
 import { ITEM_DEFS } from './items';
+
+const STAGE_GRID_COLOR: Record<Stage['theme'], string> = {
+  battlefield: '#38bdf8',
+  destination: '#c084fc',
+  cyber: '#34d399',
+};
 
 export function renderStage(
   ctx: CanvasRenderingContext2D,
   stage: Stage,
-  width: number,
-  height: number
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
 ) {
-  // Background Gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, height);
+  // Cover the entire camera view (plus padding) so zoom / blast-zone
+  // movement never reveals the black canvas around the pattern.
+  const gridSize = 160;
+  const pad = gridSize * 2;
+  const zoom = Math.max(camera.zoom, 0.01);
+  const viewW = canvasWidth / zoom;
+  const viewH = canvasHeight / zoom;
+  const originX = Math.floor((camera.x - viewW / 2 - pad) / gridSize) * gridSize;
+  const originY = Math.floor((camera.y - viewH / 2 - pad) / gridSize) * gridSize;
+  const coverW = viewW + pad * 2 + gridSize;
+  const coverH = viewH + pad * 2 + gridSize;
+
+  const grad = ctx.createLinearGradient(0, originY, 0, originY + coverH);
   grad.addColorStop(0, stage.bgGradient[0]);
   grad.addColorStop(1, stage.bgGradient[1]);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(originX, originY, coverW, coverH);
 
-  // Background Ambience / Cyber Grid / Stars
   ctx.save();
-  ctx.globalAlpha = 0.25;
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = STAGE_GRID_COLOR[stage.theme];
+  ctx.lineWidth = 1.5;
 
-  // Grid lines
-  const gridSize = 60;
-  for (let x = 0; x < width; x += gridSize) {
+  const endX = originX + coverW;
+  const endY = originY + coverH;
+  for (let x = originX; x <= endX; x += gridSize) {
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.moveTo(x, originY);
+    ctx.lineTo(x, endY);
     ctx.stroke();
   }
-  for (let y = 0; y < height; y += gridSize) {
+  for (let y = originY; y <= endY; y += gridSize) {
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(originX, y);
+    ctx.lineTo(endX, y);
     ctx.stroke();
   }
   ctx.restore();
@@ -147,6 +175,129 @@ export function renderFighter(
   }
 
   drawFighterModel(ctx, fighter.x, fighter.y, fighter, animTick, false);
+}
+
+/**
+ * Character-select portrait: same in-game model, framed with a pose that
+ * shows each fighter's signature accessories (wings, horns, scarf, etc.).
+ */
+const PORTRAIT_LAYOUT: Record<
+  FighterId,
+  { worldW: number; worldH: number; offsetY: number }
+> = {
+  // Open glide wings are Zephyr's clearest silhouette
+  zephyr: { worldW: 118, worldH: 92, offsetY: 6 },
+  // Horns + headband ribbons need a little headroom
+  brawler: { worldW: 78, worldH: 96, offsetY: 10 },
+  // Back ice crystals + crown horns
+  yeti: { worldW: 86, worldH: 100, offsetY: 8 },
+  // Antennae + thruster pack
+  striker: { worldW: 96, worldH: 98, offsetY: 8 },
+  // Minotaur horns + pauldrons
+  titan: { worldW: 90, worldH: 100, offsetY: 8 },
+  // Flowing scarf + kitsune ears
+  shinobi: { worldW: 100, worldH: 98, offsetY: 6 },
+};
+
+function createPortraitFighter(stats: FighterStats): Fighter {
+  const fighter: Fighter = {
+    playerIndex: 0,
+    isCpu: false,
+    stats,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    width: 44,
+    height: 64,
+    facing: 1,
+    isGrounded: true,
+    onDropThroughPlatform: false,
+    dropThroughTimer: 0,
+    doubleJumpsLeft: stats.doubleJumps,
+    jumpReleased: true,
+    isSprinting: false,
+    sprintStamina: SPRINT_STAMINA_MAX,
+    isCrouching: false,
+    damagePercent: 0,
+    stocks: 1,
+    currentAction: 'idle',
+    actionTimer: 0,
+    attack: null,
+    grab: { role: 'none', duration: 0, maxDuration: 0 },
+    hitstun: 0,
+    invincibleFrames: 0,
+    respawnTimer: 0,
+    ledgeHang: null,
+    ledgeCooldownTimer: 0,
+    trailPositions: [],
+    bouncedOnGround: false,
+    isGliding: false,
+    frostbiteTimer: 0,
+    burnTimer: 0,
+    staticCharge: 0,
+    shadowPhaseTimer: 0,
+    hasSuperArmor: false,
+    wingFlapTick: 0,
+    heldWeapon: null,
+  };
+
+  // Showcase poses that read at thumbnail size
+  switch (stats.id) {
+    case 'zephyr':
+      // Open glide wings — Zephyr's clearest silhouette
+      fighter.isGrounded = false;
+      fighter.isGliding = true;
+      break;
+    case 'striker':
+      // Longer thruster jets + charged lightning arcs
+      fighter.isSprinting = true;
+      fighter.staticCharge = 100;
+      break;
+    case 'brawler':
+      // Soft flame aura so horns/headband read as fire fighter
+      fighter.burnTimer = 30;
+      break;
+    default:
+      break;
+  }
+
+  return fighter;
+}
+
+export function renderFighterPortrait(
+  ctx: CanvasRenderingContext2D,
+  stats: FighterStats,
+  width: number,
+  height: number,
+  animTick = 0
+) {
+  ctx.clearRect(0, 0, width, height);
+
+  const layout = PORTRAIT_LAYOUT[stats.id] || PORTRAIT_LAYOUT.brawler;
+  const scale = Math.min(width / layout.worldW, height / layout.worldH);
+
+  // Soft color wash so the silhouette pops on dark UI
+  const wash = ctx.createRadialGradient(
+    width * 0.5,
+    height * 0.55,
+    2,
+    width * 0.5,
+    height * 0.5,
+    Math.max(width, height) * 0.55
+  );
+  wash.addColorStop(0, `${stats.color}33`);
+  wash.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.save();
+  ctx.translate(width / 2, height / 2 + layout.offsetY * scale);
+  ctx.scale(scale, scale);
+
+  const portraitFighter = createPortraitFighter(stats);
+  drawFighterModel(ctx, 0, 0, portraitFighter, animTick, false);
+  ctx.restore();
 }
 
 function drawFighterModel(
@@ -353,6 +504,37 @@ function drawFighterModel(
       ctx.arc(26, bodyY - 6, 7, 0, Math.PI * 2);
       ctx.fill();
     }
+  } else if (fighter.currentAction === 'block') {
+    // Guard: both arms crossed in front + shield arc
+    ctx.strokeStyle = mainColor;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(-2, bodyY - 10);
+    ctx.lineTo(14, bodyY + 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(6, bodyY - 10);
+    ctx.lineTo(-8, bodyY + 6);
+    ctx.stroke();
+
+    ctx.fillStyle = secColor;
+    ctx.beginPath();
+    ctx.arc(12, bodyY - 2, 5, 0, Math.PI * 2);
+    ctx.arc(-4, bodyY + 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Translucent forward shield bubble
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.ellipse(18, bodyY - 2, 14, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   } else if (fighter.currentAction === 'grab') {
     // Both arms extended forward grabbing
     ctx.strokeStyle = '#eab308';

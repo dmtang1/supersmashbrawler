@@ -19,6 +19,7 @@ export default function App() {
     mode: 'cpu',
     cpuLevel: 2, // Default to Level 2 (Easy) as requested for ease of play!
     stocks: 3,
+    matchDuration: 120, // 2 minutes
     stageId: 'battlefield',
     p1Fighter: 'brawler',
     p2Fighter: 'striker',
@@ -30,12 +31,9 @@ export default function App() {
   const [isControlsOpen, setIsControlsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [winner, setWinner] = useState<Fighter | null>(null);
-  const [matchTime, setMatchTime] = useState(0);
+  const [matchTime, setMatchTime] = useState(120);
   const [restartSignal, setRestartSignal] = useState(0);
-  const [showTouchControls, setShowTouchControls] = useState(true);
-
-  // Live input state for HUD feedback & virtual buttons
-  const [virtualInput, setVirtualInput] = useState<InputState>({
+  const emptyInput = (): InputState => ({
     up: false,
     down: false,
     left: false,
@@ -43,8 +41,26 @@ export default function App() {
     punch: false,
     kick: false,
     grab: false,
+    block: false,
     sprint: false,
   });
+
+  // Auto-enable on-screen pads for touch / coarse-pointer devices (iPhone, iPad, etc.)
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [showTouchControls, setShowTouchControls] = useState(false);
+
+  useEffect(() => {
+    const coarse =
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(pointer: coarse)').matches ||
+        window.matchMedia('(hover: none)').matches ||
+        (navigator.maxTouchPoints ?? 0) > 0);
+    setIsTouchDevice(coarse);
+    setShowTouchControls(coarse);
+  }, []);
+
+  // Live input state for HUD feedback & virtual buttons
+  const [virtualInput, setVirtualInput] = useState<InputState>(emptyInput);
   const [activeInputFeedback, setActiveInputFeedback] = useState<InputState | undefined>();
 
   // Fighter HUD display state
@@ -55,11 +71,11 @@ export default function App() {
     createInitialFighter(1, true, FIGHTERS[settings.p2Fighter], STAGES[settings.stageId]?.spawnPoints[1] || STAGES.battlefield.spawnPoints[1], -1)
   );
 
-  // Match Timer
+  // Match countdown timer
   useEffect(() => {
     if (screen !== 'battle' || isPaused || winner) return;
     const timer = setInterval(() => {
-      setMatchTime((prev) => prev + 1);
+      setMatchTime((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(timer);
   }, [screen, isPaused, winner]);
@@ -85,20 +101,34 @@ export default function App() {
     sound.stopArenaMusic();
   }, []);
 
+  // Time expired → declare winner by stocks, then lower damage %
+  useEffect(() => {
+    if (screen !== 'battle' || winner || matchTime > 0) return;
+    let winningFighter: Fighter;
+    if (p1State.stocks !== p2State.stocks) {
+      winningFighter = p1State.stocks > p2State.stocks ? p1State : p2State;
+    } else if (p1State.damagePercent !== p2State.damagePercent) {
+      winningFighter = p1State.damagePercent < p2State.damagePercent ? p1State : p2State;
+    } else {
+      winningFighter = p1State;
+    }
+    handleGameOver(winningFighter);
+  }, [screen, winner, matchTime, p1State, p2State, handleGameOver]);
+
   const handleRestart = useCallback(() => {
     setWinner(null);
     setIsPaused(false);
-    setMatchTime(0);
+    setMatchTime(settings.matchDuration);
     setRestartSignal((prev) => prev + 1);
     if (settings.musicEnabled) {
       sound.startArenaMusic();
     }
-  }, [settings.musicEnabled]);
+  }, [settings.musicEnabled, settings.matchDuration]);
 
   const handleStartBattle = () => {
     setWinner(null);
     setIsPaused(false);
-    setMatchTime(0);
+    setMatchTime(settings.matchDuration);
     setRestartSignal((prev) => prev + 1);
     setScreen('battle');
   };
@@ -121,13 +151,13 @@ export default function App() {
     });
   };
 
-  const handleVirtualKey = (action: keyof InputState, isDown: boolean, code?: string) => {
-    setVirtualInput((prev) => ({ ...prev, [action]: isDown }));
-    if (code) {
-      const eventType = isDown ? 'keydown' : 'keyup';
-      window.dispatchEvent(new KeyboardEvent(eventType, { code }));
-    }
-  };
+  const handleVirtualKey = useCallback((action: keyof InputState, isDown: boolean) => {
+    setVirtualInput((prev) => (prev[action] === isDown ? prev : { ...prev, [action]: isDown }));
+  }, []);
+
+  const handleReleaseAllVirtual = useCallback(() => {
+    setVirtualInput(emptyInput());
+  }, []);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none">
@@ -151,9 +181,11 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onBackToSelect={handleBackToStart}
           activeKeys={activeInputFeedback}
+          isTouchDevice={isTouchDevice}
           showTouchControls={showTouchControls}
           onToggleTouchControls={() => setShowTouchControls((prev) => !prev)}
           onVirtualKey={handleVirtualKey}
+          onReleaseAllVirtual={handleReleaseAllVirtual}
         >
           {/* Canvas Battle Arena (100% Unobstructed, zero overlays on top of the fight) */}
           <GameCanvas

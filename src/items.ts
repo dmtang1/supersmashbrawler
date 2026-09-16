@@ -605,6 +605,17 @@ function applyProjectileHit(
   particles: Particle[],
   addScreenShake: (intensity: number, frames: number) => void
 ) {
+  // Face into the shot to block it
+  const needFacing: 1 | -1 = proj.vx > 0 ? -1 : proj.vx < 0 ? 1 : dir === 1 ? -1 : 1;
+  if (fighter.currentAction === 'block' && fighter.facing === needFacing) {
+    sound.playBlock();
+    fighter.vx = -dir * 1.5;
+    addScreenShake(2, 4);
+    burst(fighter.x + fighter.facing * 16, fighter.y - 4, '#38bdf8', particles, 8);
+    pushText(fighter.x, fighter.y - 28, 'BLOCK!', '#38bdf8', particles);
+    return;
+  }
+
   fighter.damagePercent += proj.damage;
   const pct = fighter.damagePercent;
   const wt = fighter.stats.weight;

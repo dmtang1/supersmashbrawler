@@ -16,6 +16,7 @@ export function calculateCpuInput(
     punch: false,
     kick: false,
     grab: false,
+    block: false,
     sprint: false,
   };
 
@@ -142,6 +143,23 @@ export function calculateCpuInput(
       if (dx > 8) input.right = true;
       else if (dx < -8) input.left = true;
       if (dist > 40 && Math.random() < 0.4) input.punch = true;
+      return input;
+    }
+  }
+
+  // Guard against incoming punches / kicks when close
+  if (
+    cpu.isGrounded &&
+    player.attack &&
+    (player.attack.type === 'punch' || player.attack.type === 'kick') &&
+    dist < 90 &&
+    cpuLevel >= 2
+  ) {
+    const blockChance = cpuLevel <= 3 ? 0.28 : 0.35 + (cpuLevel / 9) * 0.45;
+    if (Math.random() < blockChance) {
+      input.block = true;
+      if (dx > 4) input.right = true;
+      else if (dx < -4) input.left = true;
       return input;
     }
   }
