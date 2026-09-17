@@ -24,8 +24,8 @@ type DirKey = 'up' | 'down' | 'left' | 'right';
 
 /**
  * Landscape two-thumb layout for platform fighters:
- * - Left thumb arc: virtual joystick + sprint (lower-left)
- * - Right thumb arc: jump + attacks + guard (lower-right)
+ * - Left thumb arc: virtual joystick (lower-left)
+ * - Right thumb arc: sprint + jump + attacks + guard (lower-right)
  * Overlay uses pointer-events-none except on controls so the
  * center of the arena stays visible and tappable for focus.
  */
@@ -244,8 +244,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       }}
       aria-hidden={!visible}
     >
-      {/* LEFT: virtual joystick (thumb zone) — keeps center stage clear */}
-      <div className="pointer-events-none absolute bottom-2 left-2 sm:bottom-3 sm:left-3 flex flex-col items-center gap-2">
+      {/* LEFT: virtual joystick only — keeps left thumb free for movement */}
+      <div className="pointer-events-none absolute bottom-2 left-2 sm:bottom-3 sm:left-3">
         <div
           id="touch-joystick"
           role="slider"
@@ -282,28 +282,20 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             }}
           />
         </div>
-
-        <button
-          id="touch-sprint"
-          type="button"
-          aria-label="Sprint"
-          className={`pointer-events-auto touch-none select-none min-w-[4.5rem] px-3 py-2.5 rounded-2xl border text-[11px] font-black uppercase tracking-wider transition-colors ${
-            actActive('sprint')
-              ? 'bg-violet-400/70 border-violet-200 text-slate-950'
-              : 'bg-slate-950/40 border-violet-400/40 text-violet-100 backdrop-blur-[2px]'
-          }`}
-          style={{ minHeight: 48 }}
-          {...bindAction('sprint')}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          Sprint
-        </button>
       </div>
 
-      {/* RIGHT: actions in thumb arc — primary punch sits at rest position */}
+      {/* RIGHT: actions in thumb arc — sprint sits with combat buttons for easier reach */}
       <div className="pointer-events-none absolute bottom-2 right-2 sm:bottom-3 sm:right-3 flex flex-col items-end gap-2">
         <div className="pointer-events-none flex items-end gap-2">
           <div className="flex flex-col gap-2">
+            <ActionButton
+              id="touch-sprint"
+              label="Sprint"
+              active={actActive('sprint')}
+              tone="violet"
+              size="md"
+              {...bindAction('sprint')}
+            />
             <ActionButton
               id="touch-grab"
               label="Grab"
@@ -356,7 +348,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   );
 };
 
-type ActionTone = 'amber' | 'rose' | 'sky' | 'cyan';
+type ActionTone = 'amber' | 'rose' | 'sky' | 'cyan' | 'violet';
 
 function ActionButton({
   id,
@@ -388,6 +380,10 @@ function ActionButton({
     cyan: {
       idle: 'bg-slate-950/40 border-cyan-400/45 text-cyan-100',
       on: 'bg-cyan-400/75 border-cyan-200 text-slate-950',
+    },
+    violet: {
+      idle: 'bg-slate-950/40 border-violet-400/45 text-violet-100',
+      on: 'bg-violet-400/75 border-violet-200 text-slate-950',
     },
   };
 

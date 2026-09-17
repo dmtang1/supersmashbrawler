@@ -46,15 +46,21 @@ export default function App() {
   });
 
   // Auto-enable on-screen pads for touch / coarse-pointer devices (iPhone, iPad, etc.)
+  // Desktop testing: append ?touch=1 to the URL to force the pads on.
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [showTouchControls, setShowTouchControls] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const forceTouch =
+      params.get('touch') === '1' ||
+      params.get('touch') === 'true' ||
+      localStorage.getItem('ssb-force-touch') === '1';
     const coarse =
-      typeof window !== 'undefined' &&
-      (window.matchMedia('(pointer: coarse)').matches ||
-        window.matchMedia('(hover: none)').matches ||
-        (navigator.maxTouchPoints ?? 0) > 0);
+      forceTouch ||
+      window.matchMedia('(pointer: coarse)').matches ||
+      window.matchMedia('(hover: none)').matches ||
+      (navigator.maxTouchPoints ?? 0) > 0;
     setIsTouchDevice(coarse);
     setShowTouchControls(coarse);
   }, []);
