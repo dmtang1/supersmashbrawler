@@ -173,7 +173,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
 
         <div className="mt-4 p-3 bg-slate-800/50 border border-slate-700/60 rounded-xl text-xs text-slate-300">
           <span className="text-sky-300 font-bold">Touch / iPad:</span> On phones and tablets, translucent pads appear in the
-          lower corners (left = move + sprint, right = jump / attacks / block). They stay out of the center of the arena.
+          lower corners (left = joystick + sprint, right = jump / attacks / block). They stay out of the center of the arena.
           Use the phone icon in the header to hide them if you pair a keyboard or controller.
         </div>
 

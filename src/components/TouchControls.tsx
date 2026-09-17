@@ -24,7 +24,7 @@ type DirKey = 'up' | 'down' | 'left' | 'right';
 
 /**
  * Landscape two-thumb layout for platform fighters:
- * - Left thumb arc: movement D-pad + sprint (lower-left)
+ * - Left thumb arc: virtual joystick + sprint (lower-left)
  * - Right thumb arc: jump + attacks + guard (lower-right)
  * Overlay uses pointer-events-none except on controls so the
  * center of the arena stays visible and tappable for focus.
@@ -35,11 +35,14 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   onReleaseAll,
 }) => {
   const [pressed, setPressed] = useState<Partial<Record<keyof InputState, boolean>>>({});
+  /** Knob offset from joystick center, in px (clamped to travel radius). */
+  const [stickOffset, setStickOffset] = useState({ x: 0, y: 0 });
+  const [stickActive, setStickActive] = useState(false);
   const dirsHeld = useRef<Set<DirKey>>(new Set());
-  /** Jump face-button holds `up` independently from the D-pad so aerials work while moving. */
+  /** Jump face-button holds `up` independently from the stick so aerials work while moving. */
   const jumpButtonHeld = useRef(false);
-  const padPointerId = useRef<number | null>(null);
-  const padOrigin = useRef<{ x: number; y: number } | null>(null);
+  const stickPointerId = useRef<number | null>(null);
+  const stickOrigin = useRef<{ x: number; y: number } | null>(null);
   const actionPointers = useRef<Map<number, keyof InputState>>(new Map());
 
   const setAction = useCallback(
@@ -70,24 +73,18 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     [publishUp, setAction]
   );
 
-  const directionsFromOffset = (dx: number, dy: number, radius: number): Set<DirKey> => {
+  /** Map stick vector → discrete directions the game expects. */
+  const directionsFromOffset = (dx: number, dy: number, maxTravel: number): Set<DirKey> => {
     const next = new Set<DirKey>();
-    const dead = radius * 0.22;
+    const dead = maxTravel * 0.28;
     const dist = Math.hypot(dx, dy);
     if (dist < dead) return next;
 
-    // Prefer cardinal axes; allow diagonals when both axes clear the dead zone.
     const ax = Math.abs(dx);
     const ay = Math.abs(dy);
-    const gate = dead * 0.85;
-
-    if (ax >= gate && ax >= ay * 0.55) {
-      next.add(dx < 0 ? 'left' : 'right');
-    }
-    if (ay >= gate && ay >= ax * 0.55) {
-      next.add(dy < 0 ? 'up' : 'down');
-    }
-    // If somehow empty after leaving deadzone, snap to dominant axis
+    // Allow diagonals when both axes are meaningfully engaged
+    if (ax >= dead * 0.7) next.add(dx < 0 ? 'left' : 'right');
+    if (ay >= dead * 0.7) next.add(dy < 0 ? 'up' : 'down');
     if (next.size === 0) {
       if (ax >= ay) next.add(dx < 0 ? 'left' : 'right');
       else next.add(dy < 0 ? 'up' : 'down');
@@ -95,12 +92,41 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     return next;
   };
 
+  const clampStick = (dx: number, dy: number, maxTravel: number) => {
+    const dist = Math.hypot(dx, dy);
+    if (dist <= maxTravel || dist === 0) return { x: dx, y: dy };
+    const scale = maxTravel / dist;
+    return { x: dx * scale, y: dy * scale };
+  };
+
+  const applyStick = (clientX: number, clientY: number, baseRadius: number) => {
+    if (!stickOrigin.current) return;
+    const rawX = clientX - stickOrigin.current.x;
+    const rawY = clientY - stickOrigin.current.y;
+    // Knob travel stays inside the base (leave room for knob radius ~35% of base)
+    const maxTravel = baseRadius * 0.62;
+    const clamped = clampStick(rawX, rawY, maxTravel);
+    setStickOffset(clamped);
+    setStickActive(true);
+    syncDirections(directionsFromOffset(clamped.x, clamped.y, maxTravel));
+  };
+
+  const resetStick = () => {
+    stickPointerId.current = null;
+    stickOrigin.current = null;
+    setStickOffset({ x: 0, y: 0 });
+    setStickActive(false);
+    syncDirections(new Set());
+  };
+
   const releaseAll = useCallback(() => {
-    padPointerId.current = null;
-    padOrigin.current = null;
+    stickPointerId.current = null;
+    stickOrigin.current = null;
     jumpButtonHeld.current = false;
     actionPointers.current.clear();
     dirsHeld.current = new Set();
+    setStickOffset({ x: 0, y: 0 });
+    setStickActive(false);
     (Object.keys(ACTION_CODES) as (keyof InputState)[]).forEach((action) => {
       setAction(action, false);
     });
@@ -130,35 +156,29 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
 
   if (!visible) return null;
 
-  const onPadPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const onStickPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
-    padPointerId.current = e.pointerId;
+    stickPointerId.current = e.pointerId;
     const rect = el.getBoundingClientRect();
-    const origin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    padOrigin.current = origin;
-    const radius = Math.min(rect.width, rect.height) / 2;
-    syncDirections(directionsFromOffset(e.clientX - origin.x, e.clientY - origin.y, radius));
+    stickOrigin.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const baseRadius = Math.min(rect.width, rect.height) / 2;
+    applyStick(e.clientX, e.clientY, baseRadius);
   };
 
-  const onPadPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (padPointerId.current !== e.pointerId || !padOrigin.current) return;
+  const onStickPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (stickPointerId.current !== e.pointerId || !stickOrigin.current) return;
     e.preventDefault();
-    const el = e.currentTarget;
-    const rect = el.getBoundingClientRect();
-    const radius = Math.min(rect.width, rect.height) / 2;
-    syncDirections(
-      directionsFromOffset(e.clientX - padOrigin.current.x, e.clientY - padOrigin.current.y, radius)
-    );
+    const rect = e.currentTarget.getBoundingClientRect();
+    const baseRadius = Math.min(rect.width, rect.height) / 2;
+    applyStick(e.clientX, e.clientY, baseRadius);
   };
 
-  const onPadPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (padPointerId.current !== e.pointerId) return;
-    padPointerId.current = null;
-    padOrigin.current = null;
-    syncDirections(new Set());
+  const onStickPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (stickPointerId.current !== e.pointerId) return;
+    resetStick();
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
@@ -210,7 +230,6 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     },
   });
 
-  const dirActive = (d: DirKey) => dirsHeld.current.has(d);
   const actActive = (a: keyof InputState) =>
     a === 'up' ? jumpButtonHeld.current : !!pressed[a];
 
@@ -225,35 +244,42 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       }}
       aria-hidden={!visible}
     >
-      {/* LEFT: movement (thumb zone) — keeps center stage clear */}
+      {/* LEFT: virtual joystick (thumb zone) — keeps center stage clear */}
       <div className="pointer-events-none absolute bottom-2 left-2 sm:bottom-3 sm:left-3 flex flex-col items-center gap-2">
         <div
-          id="touch-dpad"
+          id="touch-joystick"
+          role="slider"
+          aria-label="Movement joystick"
           className="pointer-events-auto relative touch-none select-none rounded-full"
           style={{ width: 'min(42vw, 168px)', height: 'min(42vw, 168px)' }}
-          onPointerDown={onPadPointerDown}
-          onPointerMove={onPadPointerMove}
-          onPointerUp={onPadPointerEnd}
-          onPointerCancel={onPadPointerEnd}
+          onPointerDown={onStickPointerDown}
+          onPointerMove={onStickPointerMove}
+          onPointerUp={onStickPointerEnd}
+          onPointerCancel={onStickPointerEnd}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {/* Base ring */}
-          <div className="absolute inset-0 rounded-full bg-slate-950/35 border border-white/15 backdrop-blur-[2px] shadow-[0_4px_20px_rgba(0,0,0,0.35)]" />
-          {/* Cross guides */}
-          <div className="absolute left-1/2 top-[12%] bottom-[12%] w-px -translate-x-1/2 bg-white/10" />
-          <div className="absolute top-1/2 left-[12%] right-[12%] h-px -translate-y-1/2 bg-white/10" />
-
-          <DpadGlyph dir="up" active={dirActive('up')} className="top-[8%] left-1/2 -translate-x-1/2" />
-          <DpadGlyph dir="down" active={dirActive('down')} className="bottom-[8%] left-1/2 -translate-x-1/2" />
-          <DpadGlyph dir="left" active={dirActive('left')} className="left-[8%] top-1/2 -translate-y-1/2" />
-          <DpadGlyph dir="right" active={dirActive('right')} className="right-[8%] top-1/2 -translate-y-1/2" />
-
+          {/* Base */}
           <div
-            className={`absolute left-1/2 top-1/2 h-[28%] w-[28%] -translate-x-1/2 -translate-y-1/2 rounded-full border transition-colors ${
-              dirsHeld.current.size > 0
-                ? 'bg-sky-400/55 border-sky-200/70'
-                : 'bg-white/20 border-white/25'
+            className={`absolute inset-0 rounded-full border backdrop-blur-[2px] shadow-[0_4px_20px_rgba(0,0,0,0.35)] transition-colors ${
+              stickActive
+                ? 'bg-slate-950/45 border-sky-400/40'
+                : 'bg-slate-950/35 border-white/15'
             }`}
+          />
+          {/* Subtle ring guide */}
+          <div className="absolute inset-[18%] rounded-full border border-white/10" />
+
+          {/* Movable knob */}
+          <div
+            className={`absolute left-1/2 top-1/2 h-[38%] w-[38%] rounded-full border shadow-[0_2px_12px_rgba(0,0,0,0.45)] ${
+              stickActive
+                ? 'bg-sky-400/70 border-sky-100/80'
+                : 'bg-white/25 border-white/35'
+            }`}
+            style={{
+              transform: `translate(calc(-50% + ${stickOffset.x}px), calc(-50% + ${stickOffset.y}px))`,
+              transition: stickActive ? 'none' : 'transform 120ms ease-out',
+            }}
           />
         </div>
 
@@ -329,38 +355,6 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     </div>
   );
 };
-
-function DpadGlyph({
-  dir,
-  active,
-  className,
-}: {
-  dir: DirKey;
-  active: boolean;
-  className: string;
-}) {
-  const rotate =
-    dir === 'up' ? '0deg' : dir === 'right' ? '90deg' : dir === 'down' ? '180deg' : '270deg';
-  return (
-    <div
-      className={`absolute flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-        active ? 'bg-sky-400/50 text-white' : 'bg-white/10 text-white/70'
-      } ${className}`}
-      style={{ transform: undefined }}
-    >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        style={{ transform: `rotate(${rotate})` }}
-        aria-hidden
-      >
-        <path d="M12 5l7 9H5l7-9z" />
-      </svg>
-    </div>
-  );
-}
 
 type ActionTone = 'amber' | 'rose' | 'sky' | 'cyan';
 
