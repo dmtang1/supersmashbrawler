@@ -99,7 +99,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   CPU Difficulty Level
                 </label>
                 <span className="text-xs font-mono font-bold text-amber-400">
-                  Level {settings.cpuLevel} {settings.cpuLevel >= 8 ? '(Master)' : settings.cpuLevel >= 5 ? '(Standard)' : '(Beginner)'}
+                  Level {settings.cpuLevel}{' '}
+                  {settings.cpuLevel >= 8
+                    ? '(Master)'
+                    : settings.cpuLevel >= 6
+                      ? '(Hard)'
+                      : settings.cpuLevel >= 3
+                        ? '(Normal)'
+                        : '(Easy)'}
                 </span>
               </div>
               <input
@@ -112,9 +119,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="w-full accent-amber-400 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-                <span>1: Passive</span>
-                <span>5: Aggressive</span>
-                <span>9: Tournament Pro</span>
+                <span>1 Easy</span>
+                <span>3 Normal</span>
+                <span>6 Hard</span>
+                <span>9 Master</span>
               </div>
             </div>
           )}

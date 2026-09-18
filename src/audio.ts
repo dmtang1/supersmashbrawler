@@ -975,6 +975,26 @@ class SoundEngine {
     this.playNoiseBurst(heavy ? 0.12 : 0.06, heavy ? 0.35 : 0.2, heavy ? 500 : 800);
   }
 
+  public playWeaponHit(kind: 'sword' | 'beam_sword' | 'hammer' | 'bat' | string) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const heavy = kind === 'hammer' || kind === 'bat';
+    this.playNoiseBurst(heavy ? 0.1 : 0.07, heavy ? 0.55 : 0.4, heavy ? 420 : 900);
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = heavy ? 'square' : 'sawtooth';
+    osc.frequency.setValueAtTime(heavy ? 220 : 520, now);
+    osc.frequency.exponentialRampToValueAtTime(heavy ? 55 : 120, now + (heavy ? 0.14 : 0.09));
+    gain.gain.setValueAtTime(heavy ? 0.42 : 0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + (heavy ? 0.16 : 0.1));
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + (heavy ? 0.18 : 0.11));
+  }
+
   public playBombThrow() {
     if (!this.enabled) return;
     this.initCtx();

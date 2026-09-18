@@ -958,6 +958,340 @@ export function renderFighterPortrait(
   ctx.restore();
 }
 
+/** Proportions + face cues that make each fighter readable at match zoom. */
+type FighterSilhouette = {
+  legWidth: number;
+  armWidth: number;
+  fistR: number;
+  shoeRx: number;
+  shoeRy: number;
+  headR: number;
+  headYOffset: number;
+  shadowW: number;
+  /** Extra outward hip offset for stance. */
+  hip: number;
+  /** Standing leg length from hip (default ~20). */
+  legLen: number;
+  eyeX: number;
+  eyeR: number;
+  /** true only for Lyla — soft lashes / feminine face. */
+  feminine: boolean;
+  face: 'smile' | 'snarl' | 'smirk' | 'soft' | 'grin' | 'stoic';
+};
+
+function getFighterSilhouette(id: FighterId): FighterSilhouette {
+  switch (id) {
+    case 'zephyr':
+      return {
+        legWidth: 5.5, armWidth: 5.5, fistR: 5.2, shoeRx: 5, shoeRy: 3,
+        headR: 10.5, headYOffset: -28, shadowW: 15, hip: 1, legLen: 24,
+        eyeX: 4.5, eyeR: 2.9, feminine: false, face: 'smirk',
+      };
+    case 'brawler':
+      return {
+        legWidth: 10, armWidth: 9, fistR: 8.5, shoeRx: 8, shoeRy: 4.2,
+        headR: 13.5, headYOffset: -24, shadowW: 24, hip: 2, legLen: 18,
+        eyeX: 5.5, eyeR: 3.6, feminine: false, face: 'snarl',
+      };
+    case 'yeti':
+      return {
+        legWidth: 11, armWidth: 10, fistR: 9, shoeRx: 9, shoeRy: 4.5,
+        headR: 14.5, headYOffset: -23, shadowW: 26, hip: 3, legLen: 16,
+        eyeX: 5.5, eyeR: 3.4, feminine: false, face: 'stoic',
+      };
+    case 'striker':
+      return {
+        legWidth: 6, armWidth: 6, fistR: 5.5, shoeRx: 5.5, shoeRy: 3,
+        headR: 11, headYOffset: -27, shadowW: 16, hip: 1, legLen: 22,
+        eyeX: 5, eyeR: 2.8, feminine: false, face: 'smirk',
+      };
+    case 'titan':
+      return {
+        legWidth: 12, armWidth: 11, fistR: 9.5, shoeRx: 9.5, shoeRy: 5,
+        headR: 14, headYOffset: -22, shadowW: 28, hip: 4, legLen: 17,
+        eyeX: 5.5, eyeR: 3.5, feminine: false, face: 'stoic',
+      };
+    case 'shinobi':
+      return {
+        legWidth: 5.5, armWidth: 5.5, fistR: 5.5, shoeRx: 5, shoeRy: 3,
+        headR: 11, headYOffset: -28, shadowW: 15, hip: 0, legLen: 23,
+        eyeX: 5, eyeR: 3, feminine: false, face: 'smirk',
+      };
+    case 'monk':
+      return {
+        legWidth: 8, armWidth: 7.5, fistR: 7, shoeRx: 7, shoeRy: 4,
+        headR: 13, headYOffset: -24, shadowW: 22, hip: 2, legLen: 16,
+        eyeX: 5, eyeR: 3.3, feminine: false, face: 'grin',
+      };
+    case 'lotus':
+      return {
+        legWidth: 5, armWidth: 5, fistR: 5, shoeRx: 5.5, shoeRy: 3.2,
+        headR: 11, headYOffset: -27, shadowW: 16, hip: 2, legLen: 24,
+        eyeX: 5, eyeR: 3.5, feminine: true, face: 'soft',
+      };
+  }
+}
+
+function drawFighterTorsoShape(
+  ctx: CanvasRenderingContext2D,
+  id: FighterId,
+  bodyY: number,
+  mainColor: string,
+  secColor: string,
+  cel: (fill: string, path: () => void, line?: number) => void
+) {
+  const INK = '#1a120e';
+
+  if (id === 'zephyr') {
+    // Slim avian chest — narrow shoulders, long torso
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-9, bodyY - 16);
+      ctx.quadraticCurveTo(-11, bodyY - 2, -8, bodyY + 14);
+      ctx.quadraticCurveTo(0, bodyY + 17, 8, bodyY + 14);
+      ctx.quadraticCurveTo(11, bodyY - 2, 9, bodyY - 16);
+      ctx.quadraticCurveTo(0, bodyY - 18, -9, bodyY - 16);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-7, bodyY + 6, 14, 4, 2);
+    }, 2);
+  } else if (id === 'brawler') {
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-18, bodyY - 14);
+      ctx.quadraticCurveTo(-20, bodyY - 2, -15, bodyY + 12);
+      ctx.quadraticCurveTo(-6, bodyY + 18, 6, bodyY + 18);
+      ctx.quadraticCurveTo(15, bodyY + 12, 20, bodyY - 2);
+      ctx.quadraticCurveTo(18, bodyY - 14, 10, bodyY - 16);
+      ctx.quadraticCurveTo(0, bodyY - 18, -10, bodyY - 16);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-14, bodyY + 4, 28, 8, 2);
+    }, 2);
+  } else if (id === 'yeti') {
+    // Heavy frost pear — massive belly, thick trunk
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-14, bodyY - 14);
+      ctx.quadraticCurveTo(-22, bodyY + 2, -18, bodyY + 16);
+      ctx.quadraticCurveTo(-4, bodyY + 22, 4, bodyY + 22);
+      ctx.quadraticCurveTo(18, bodyY + 16, 22, bodyY + 2);
+      ctx.quadraticCurveTo(14, bodyY - 14, 0, bodyY - 17);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-12, bodyY + 8, 24, 6, 2);
+    }, 2);
+  } else if (id === 'striker') {
+    // Angular tech torso — trapezoid shoulders
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-14, bodyY - 15);
+      ctx.lineTo(14, bodyY - 15);
+      ctx.lineTo(10, bodyY + 14);
+      ctx.lineTo(-10, bodyY + 14);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-9, bodyY + 4);
+      ctx.lineTo(9, bodyY + 4);
+      ctx.lineTo(8, bodyY + 10);
+      ctx.lineTo(-8, bodyY + 10);
+      ctx.closePath();
+    }, 2);
+  } else if (id === 'titan') {
+    // Juggernaut — huge square shoulders, short trunk
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-22, bodyY - 12);
+      ctx.lineTo(22, bodyY - 12);
+      ctx.quadraticCurveTo(20, bodyY + 6, 14, bodyY + 16);
+      ctx.lineTo(-14, bodyY + 16);
+      ctx.quadraticCurveTo(-20, bodyY + 6, -22, bodyY - 12);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-12, bodyY + 6, 24, 7, 2);
+    }, 2);
+  } else if (id === 'shinobi') {
+    // Lean male assassin — square shoulders, slim waist
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-12, bodyY - 16);
+      ctx.quadraticCurveTo(-13, bodyY - 4, -8, bodyY + 12);
+      ctx.quadraticCurveTo(0, bodyY + 16, 8, bodyY + 12);
+      ctx.quadraticCurveTo(13, bodyY - 4, 12, bodyY - 16);
+      ctx.quadraticCurveTo(0, bodyY - 18, -12, bodyY - 16);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-7, bodyY + 5, 14, 5, 2);
+    }, 2);
+  } else if (id === 'monk') {
+    // Pot-bellied monkey sage
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-12, bodyY - 14);
+      ctx.quadraticCurveTo(-18, bodyY + 2, -14, bodyY + 16);
+      ctx.quadraticCurveTo(0, bodyY + 20, 14, bodyY + 16);
+      ctx.quadraticCurveTo(18, bodyY + 2, 12, bodyY - 14);
+      ctx.quadraticCurveTo(0, bodyY - 17, -12, bodyY - 14);
+      ctx.closePath();
+    }, 3);
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-11, bodyY + 6, 22, 6, 3);
+    }, 2);
+  } else if (id === 'lotus') {
+    // Feminine hourglass — narrow shoulders, cinched waist, flared hips
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-10, bodyY - 15);
+      ctx.quadraticCurveTo(-11, bodyY - 6, -7, bodyY + 2);
+      ctx.quadraticCurveTo(-14, bodyY + 10, -13, bodyY + 16);
+      ctx.quadraticCurveTo(0, bodyY + 19, 13, bodyY + 16);
+      ctx.quadraticCurveTo(14, bodyY + 10, 7, bodyY + 2);
+      ctx.quadraticCurveTo(11, bodyY - 6, 10, bodyY - 15);
+      ctx.quadraticCurveTo(0, bodyY - 17, -10, bodyY - 15);
+      ctx.closePath();
+    }, 3);
+    // Soft sash bow at waist
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.roundRect(-6, bodyY + 1, 12, 5, 2);
+    }, 2);
+    ctx.fillStyle = secColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(6, bodyY + 3);
+    ctx.quadraticCurveTo(14, bodyY - 2, 12, bodyY + 8);
+    ctx.quadraticCurveTo(8, bodyY + 6, 6, bodyY + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+function drawFighterHeadShape(
+  ctx: CanvasRenderingContext2D,
+  id: FighterId,
+  headY: number,
+  headR: number,
+  mainColor: string,
+  cel: (fill: string, path: () => void, line?: number) => void
+) {
+  const INK = '#1a120e';
+
+  if (id === 'zephyr') {
+    // Slightly pointed avian chin
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-headR + 1, headY - 2);
+      ctx.quadraticCurveTo(-headR + 2, headY - headR, 0, headY - headR);
+      ctx.quadraticCurveTo(headR - 2, headY - headR, headR, headY - 1);
+      ctx.quadraticCurveTo(headR - 2, headY + 8, 2, headY + 11);
+      ctx.quadraticCurveTo(-headR + 4, headY + 8, -headR + 1, headY - 2);
+      ctx.closePath();
+    }, 3);
+  } else if (id === 'brawler') {
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-headR + 2, headY - 4);
+      ctx.quadraticCurveTo(-headR, headY - headR, 0, headY - headR - 1);
+      ctx.quadraticCurveTo(headR, headY - headR, headR - 1, headY - 2);
+      ctx.quadraticCurveTo(headR + 2, headY + 4, headR - 4, headY + 8);
+      ctx.quadraticCurveTo(4, headY + 11, -2, headY + 10);
+      ctx.quadraticCurveTo(-headR + 1, headY + 8, -headR + 2, headY - 4);
+      ctx.closePath();
+    }, 3);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(1, headY - 5);
+    ctx.quadraticCurveTo(6, headY - 7, 11, headY - 4);
+    ctx.stroke();
+  } else if (id === 'yeti') {
+    // Big round frost mug
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.ellipse(0, headY + 1, headR, headR + 1.5, 0, 0, Math.PI * 2);
+    }, 3);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(0, headY - 5);
+    ctx.quadraticCurveTo(7, headY - 8, 12, headY - 3);
+    ctx.stroke();
+  } else if (id === 'striker') {
+    // Angular helmet-like head
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-headR + 1, headY - 4);
+      ctx.lineTo(-headR + 3, headY - headR + 1);
+      ctx.lineTo(headR - 3, headY - headR + 1);
+      ctx.lineTo(headR, headY - 2);
+      ctx.lineTo(headR - 3, headY + 9);
+      ctx.lineTo(-headR + 3, headY + 9);
+      ctx.closePath();
+    }, 3);
+  } else if (id === 'titan') {
+    // Blocky minotaur skull
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-headR + 1, headY - 6);
+      ctx.quadraticCurveTo(-headR, headY - headR, 0, headY - headR + 1);
+      ctx.quadraticCurveTo(headR, headY - headR, headR - 1, headY - 6);
+      ctx.lineTo(headR - 2, headY + 8);
+      ctx.lineTo(-headR + 2, headY + 8);
+      ctx.closePath();
+    }, 3);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-2, headY - 4);
+    ctx.lineTo(11, headY - 6);
+    ctx.stroke();
+  } else if (id === 'shinobi') {
+    // Tall lean male oval
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.ellipse(0, headY, headR - 0.5, headR + 1, 0, 0, Math.PI * 2);
+    }, 3);
+  } else if (id === 'monk') {
+    // Round monkey face (masculine goof)
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.ellipse(0, headY + 1, headR + 0.5, headR, 0, 0, Math.PI * 2);
+    }, 3);
+    // Snout pad
+    cel('#e8d5a0', () => {
+      ctx.beginPath();
+      ctx.ellipse(3, headY + 4, 6, 4.5, 0.1, 0, Math.PI * 2);
+    }, 2);
+  } else if (id === 'lotus') {
+    // Soft feminine oval — smaller chin, fuller cheeks
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-headR + 1, headY - 2);
+      ctx.quadraticCurveTo(-headR, headY - headR + 1, 0, headY - headR);
+      ctx.quadraticCurveTo(headR, headY - headR + 1, headR - 1, headY - 2);
+      ctx.quadraticCurveTo(headR - 2, headY + 7, 2, headY + 10);
+      ctx.quadraticCurveTo(-headR + 3, headY + 8, -headR + 1, headY - 2);
+      ctx.closePath();
+    }, 3);
+  }
+}
+
 function drawFighterModel(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -1008,6 +1342,7 @@ function drawFighterModel(
   ctx.scale(fighter.facing, 1);
 
   const stats = fighter.stats;
+  const sil = getFighterSilhouette(stats.id);
   const isCrouching = fighter.isCrouching;
   const isHit = fighter.hitstun > 0;
   const isSprinting = fighter.isSprinting;
@@ -1026,33 +1361,59 @@ function drawFighterModel(
     ctx.save();
     ctx.fillStyle = 'rgba(26, 18, 14, 0.28)';
     ctx.beginPath();
-    ctx.ellipse(0, fighter.height / 2 + 2, 18, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, fighter.height / 2 + 2, sil.shadowW, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  const walkCycle = Math.sin(animTick * (isSprinting ? 0.45 : 0.25));
+  // Smash-style gait: plant while idle; contralateral swing only while walking/sprinting.
+  const isLocomoting =
+    fighter.isGrounded &&
+    !isCrouching &&
+    (fighter.currentAction === 'walk' || fighter.currentAction === 'sprint');
+  const gaitPhase = Math.sin(animTick * (isSprinting ? 0.48 : 0.28));
+  const idleBreath = Math.sin(animTick * 0.09);
+  // Stride stays under hip separation so feet never swap sides.
+  const strideAmp = isSprinting ? 10 : 7;
+  const armSwingAmp = isSprinting ? 9 : 6;
+  const gait = isLocomoting ? gaitPhase : idleBreath * 0.12;
   const bodyY = isCrouching ? 10 : 0;
-  const bodyLean = isSprinting ? 0.25 : fighter.currentAction === 'walk' ? 0.1 : 0;
+  const bodyLean = isSprinting ? 0.22 : fighter.currentAction === 'walk' ? 0.08 : 0;
+  // Wider hips + outward plant = readable A-stance at rest
+  const hipL = -8 - sil.hip;
+  const hipR = 8 + sil.hip;
+  const stanceOut = 3.5;
+  const legLen = sil.legLen;
+  const shoulderL = -10 - sil.hip * 0.5;
+  const shoulderR = 10 + sil.hip * 0.5;
+  const shoulderY = bodyY - 8;
+  // gait > 0: left foot forward (+X), right foot back; arms opposite (left back, right forward)
+  const footLX = hipL - stanceOut + gait * strideAmp;
+  const footRX = hipR + stanceOut - gait * strideAmp;
+  const footLY = legLen - (isLocomoting ? Math.max(0, -gait) * 3 : 0);
+  const footRY = legLen - (isLocomoting ? Math.max(0, gait) * 3 : 0);
+  const handLX = shoulderL - 1 - gait * armSwingAmp;
+  const handRX = shoulderR + 1 + gait * armSwingAmp;
+  const handY = bodyY + 10 + Math.abs(gait) * (isLocomoting ? 2 : 0);
 
   ctx.rotate(bodyLean);
 
   drawFighterAccessoriesBack(ctx, fighter, bodyY, animTick, isTrail);
 
   // --- Legs (rubber hose) ---
-  const legYStart = bodyY + 12;
-  const strokeLegs = (draw: () => void) => hose(secColor, 7, draw);
+  const legYStart = bodyY + (stats.id === 'lotus' ? 14 : 12);
+  const strokeLegs = (draw: () => void) => hose(secColor, sil.legWidth, draw);
 
   if (fighter.currentAction === 'super') {
     const spin = Math.sin(animTick * 0.55);
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(-6, legYStart);
+      ctx.moveTo(hipL, legYStart);
       ctx.lineTo(-18 - spin * 8, legYStart + 10);
     });
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(6, legYStart);
+      ctx.moveTo(hipR, legYStart);
       ctx.lineTo(22 + spin * 10, legYStart - 6);
     });
   } else if (fighter.currentAction === 'kick') {
@@ -1060,80 +1421,81 @@ function drawFighterModel(
     if (kickDir === 'down') {
       strokeLegs(() => {
         ctx.beginPath();
-        ctx.moveTo(-6, legYStart);
-        ctx.lineTo(-4, legYStart + 24);
+        ctx.moveTo(hipL, legYStart);
+        ctx.lineTo(hipL - 2, legYStart + legLen + 4);
       });
       strokeLegs(() => {
         ctx.beginPath();
-        ctx.moveTo(6, legYStart);
-        ctx.lineTo(10, legYStart + 30);
+        ctx.moveTo(hipR, legYStart);
+        ctx.lineTo(hipR + 4, legYStart + legLen + 10);
       });
     } else if (kickDir === 'up') {
       strokeLegs(() => {
         ctx.beginPath();
-        ctx.moveTo(-6, legYStart);
-        ctx.lineTo(-8, legYStart + 18);
+        ctx.moveTo(hipL, legYStart);
+        ctx.lineTo(hipL - 2, legYStart + legLen - 2);
       });
       strokeLegs(() => {
         ctx.beginPath();
-        ctx.moveTo(6, legYStart);
-        ctx.lineTo(16, legYStart - 28);
+        ctx.moveTo(hipR, legYStart);
+        ctx.lineTo(hipR + 8, legYStart - 28);
       });
     } else {
       strokeLegs(() => {
         ctx.beginPath();
-        ctx.moveTo(-6, legYStart);
-        ctx.lineTo(-8, legYStart + 20);
+        ctx.moveTo(hipL, legYStart);
+        ctx.lineTo(hipL - 2, legYStart + legLen);
       });
       strokeLegs(() => {
         ctx.beginPath();
-        ctx.moveTo(6, legYStart);
-        ctx.lineTo(26, legYStart + 4);
+        ctx.moveTo(hipR, legYStart);
+        ctx.lineTo(hipR + 18, legYStart + 4);
       });
     }
   } else if (fighter.currentAction === 'ledge_hang') {
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(-4, legYStart);
-      ctx.lineTo(-5, legYStart + 22);
+      ctx.moveTo(hipL, legYStart);
+      ctx.lineTo(hipL - 2, legYStart + legLen + 2);
     });
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(4, legYStart);
-      ctx.lineTo(3, legYStart + 24);
+      ctx.moveTo(hipR, legYStart);
+      ctx.lineTo(hipR + 2, legYStart + legLen + 4);
     });
   } else if (!fighter.isGrounded) {
+    // Air: slight tuck, still A-stance (never crossed)
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(-6, legYStart);
-      ctx.lineTo(-12, legYStart + 16);
+      ctx.moveTo(hipL, legYStart);
+      ctx.lineTo(hipL - 4, legYStart + legLen - 6);
     });
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(6, legYStart);
-      ctx.lineTo(8, legYStart + 18);
+      ctx.moveTo(hipR, legYStart);
+      ctx.lineTo(hipR + 4, legYStart + legLen - 4);
     });
   } else if (isCrouching) {
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(-8, legYStart);
-      ctx.lineTo(-14, legYStart + 12);
+      ctx.moveTo(hipL, legYStart);
+      ctx.lineTo(hipL - 6, legYStart + 12);
     });
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(6, legYStart);
-      ctx.lineTo(12, legYStart + 12);
+      ctx.moveTo(hipR, legYStart);
+      ctx.lineTo(hipR + 6, legYStart + 12);
     });
   } else {
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(-6, legYStart);
-      ctx.lineTo(-6 - walkCycle * 14, legYStart + 20);
+      ctx.moveTo(hipL, legYStart);
+      ctx.lineTo(footLX, legYStart + footLY);
     });
     strokeLegs(() => {
       ctx.beginPath();
-      ctx.moveTo(6, legYStart);
-      ctx.lineTo(6 + walkCycle * 14, legYStart + 20);
+      ctx.moveTo(hipR, legYStart);
+      ctx.lineTo(footRX, legYStart + footRY);
     });
   }
 
@@ -1141,80 +1503,117 @@ function drawFighterModel(
   const shoeAt = (sx: number, sy: number) => {
     cel(secColor, () => {
       ctx.beginPath();
-      ctx.ellipse(sx, sy, 6, 3.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(sx, sy, sil.shoeRx, sil.shoeRy, 0, 0, Math.PI * 2);
     }, 2);
   };
   if (fighter.currentAction !== 'kick' && fighter.currentAction !== 'super') {
     if (!fighter.isGrounded) {
-      shoeAt(-12, legYStart + 16);
-      shoeAt(8, legYStart + 18);
+      shoeAt(hipL - 4, legYStart + legLen - 6);
+      shoeAt(hipR + 4, legYStart + legLen - 4);
     } else if (isCrouching) {
-      shoeAt(-14, legYStart + 12);
-      shoeAt(12, legYStart + 12);
+      shoeAt(hipL - 6, legYStart + 12);
+      shoeAt(hipR + 6, legYStart + 12);
     } else if (fighter.currentAction === 'ledge_hang') {
-      shoeAt(-5, legYStart + 22);
-      shoeAt(3, legYStart + 24);
+      shoeAt(hipL - 2, legYStart + legLen + 2);
+      shoeAt(hipR + 2, legYStart + legLen + 4);
     } else {
-      shoeAt(-6 - walkCycle * 14, legYStart + 20);
-      shoeAt(6 + walkCycle * 14, legYStart + 20);
+      shoeAt(footLX, legYStart + footLY);
+      shoeAt(footRX, legYStart + footRY);
     }
   }
 
-  // --- Torso (pear / capsule silhouette) ---
-  cel(mainColor, () => {
-    ctx.beginPath();
-    ctx.roundRect(-13, bodyY - 15, 26, 30, 8);
-  }, 3);
+  // Lyla: front skirt overlay so legs sit under the hem
+  if (stats.id === 'lotus') {
+    const flap = Math.sin(animTick * 0.28) * 2;
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-12, bodyY + 12);
+      ctx.quadraticCurveTo(-4, bodyY + 20 + flap, 0, bodyY + 22 + flap);
+      ctx.quadraticCurveTo(4, bodyY + 20 - flap, 12, bodyY + 12);
+      ctx.lineTo(7, bodyY + 4);
+      ctx.lineTo(-7, bodyY + 4);
+      ctx.closePath();
+    }, 2);
+  }
 
-  // Belt sash
-  cel(secColor, () => {
-    ctx.beginPath();
-    ctx.roundRect(-11, bodyY + 5, 22, 6, 2);
-  }, 2);
+  // --- Torso + belt ---
+  drawFighterTorsoShape(ctx, stats.id, bodyY, mainColor, secColor, cel);
   drawFighterChestEmblem(ctx, fighter, bodyY, secColor);
 
   // --- Head ---
-  const headY = bodyY - 26;
-  cel(mainColor, () => {
-    ctx.beginPath();
-    ctx.arc(0, headY, 12, 0, Math.PI * 2);
-  }, 3);
-
+  const headY = bodyY + sil.headYOffset;
+  drawFighterHeadShape(ctx, stats.id, headY, sil.headR, mainColor, cel);
   drawFighterHeadAccessories(ctx, fighter, headY, animTick);
 
-  // Pie-cut cartoon eyes (inked, no glow)
-  const eyeY = headY - 1;
+  // Pie-cut cartoon eyes
+  const eyeY = headY - (sil.feminine ? 0.5 : 1);
   ctx.fillStyle = INK;
   ctx.beginPath();
-  ctx.arc(5, eyeY, 3.2, 0, Math.PI * 2);
+  ctx.arc(sil.eyeX, eyeY, sil.eyeR, 0, Math.PI * 2);
   ctx.fill();
-  // Pie wedge cut
   ctx.fillStyle = mainColor;
   ctx.beginPath();
-  ctx.moveTo(5, eyeY);
-  ctx.arc(5, eyeY, 3.4, -0.55, 0.35);
+  ctx.moveTo(sil.eyeX, eyeY);
+  ctx.arc(sil.eyeX, eyeY, sil.eyeR + 0.2, -0.55, 0.35);
   ctx.closePath();
   ctx.fill();
-  // Tiny gleam
   ctx.fillStyle = '#f5efe6';
   ctx.beginPath();
-  ctx.arc(6.2, eyeY - 1.2, 0.9, 0, Math.PI * 2);
+  ctx.arc(sil.eyeX + 1.2, eyeY - 1.2, sil.feminine ? 1.1 : 0.9, 0, Math.PI * 2);
   ctx.fill();
 
-  // Cheek freckle / smile hint
+  // Lashes (Lyla only)
+  if (sil.feminine) {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(sil.eyeX + sil.eyeR - 0.5, eyeY - 1);
+    ctx.quadraticCurveTo(sil.eyeX + sil.eyeR + 2, eyeY - 3, sil.eyeX + sil.eyeR + 1.5, eyeY - 5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(sil.eyeX + sil.eyeR - 1.5, eyeY - 2.5);
+    ctx.lineTo(sil.eyeX + sil.eyeR + 0.5, eyeY - 4.5);
+    ctx.stroke();
+  }
+
+  // Mouth by character
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = sil.feminine ? 1.3 : 1.5;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.arc(4, headY + 5, 3.5, 0.15, Math.PI - 0.15);
+  if (sil.face === 'snarl') {
+    ctx.moveTo(2, headY + 5);
+    ctx.quadraticCurveTo(6, headY + 8, 10, headY + 5);
+  } else if (sil.face === 'smirk') {
+    ctx.moveTo(2, headY + 5);
+    ctx.quadraticCurveTo(6, headY + 7, 9, headY + 4);
+  } else if (sil.face === 'grin') {
+    ctx.arc(4, headY + 4, 4.5, 0.2, Math.PI - 0.1);
+  } else if (sil.face === 'stoic') {
+    ctx.moveTo(2, headY + 6);
+    ctx.lineTo(9, headY + 6);
+  } else if (sil.face === 'soft') {
+    ctx.arc(4, headY + 5, 3.2, 0.25, Math.PI - 0.25);
+  } else {
+    ctx.arc(4, headY + 5, 3.5, 0.15, Math.PI - 0.15);
+  }
   ctx.stroke();
 
+  // Blush for Lyla
+  if (sil.feminine) {
+    ctx.fillStyle = 'rgba(240, 140, 160, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(sil.eyeX - 1, headY + 4, 3.5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // --- Arms ---
-  const strokeArms = (color: string, draw: () => void) => hose(color, 7, draw);
+  const strokeArms = (color: string, draw: () => void) => hose(color, sil.armWidth, draw);
   const fist = (fx: number, fy: number, fill = secColor) => {
     cel(fill, () => {
       ctx.beginPath();
-      ctx.arc(fx, fy, 6.5, 0, Math.PI * 2);
+      ctx.arc(fx, fy, sil.fistR, 0, Math.PI * 2);
     }, 2.5);
   };
 
@@ -1222,45 +1621,74 @@ function drawFighterModel(
     const spin = Math.sin(animTick * 0.6);
     strokeArms(secColor, () => {
       ctx.beginPath();
-      ctx.moveTo(2, bodyY - 6);
+      ctx.moveTo(shoulderR - 2, shoulderY);
       ctx.lineTo(28 + spin * 6, bodyY - 10);
     });
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-2, bodyY);
+      ctx.moveTo(shoulderL + 2, shoulderY + 2);
       ctx.lineTo(-20 - spin * 8, bodyY + 8);
     });
     fist(28 + spin * 6, bodyY - 10, mainColor);
   } else if (fighter.currentAction === 'punch') {
     const punchDir = fighter.attack?.direction;
-    if (punchDir === 'up') {
+    const weaponPose = getHeldWeaponPose(fighter, bodyY, animTick);
+    if (weaponPose.meleeSwing) {
+      // Arm tracks the swinging weapon hand
       strokeArms(mainColor, () => {
         ctx.beginPath();
-        ctx.moveTo(4, bodyY - 6);
+        ctx.moveTo(shoulderR - 2, shoulderY);
+        ctx.lineTo(weaponPose.handX - 2, weaponPose.handY + 2);
+      });
+      fist(weaponPose.handX - 2, weaponPose.handY + 2);
+      strokeArms(mainColor, () => {
+        ctx.beginPath();
+        ctx.moveTo(shoulderL, shoulderY);
+        ctx.lineTo(shoulderL - 4, handY + (weaponPose.phase === 'slash' ? 4 : 0));
+      });
+      fist(shoulderL - 4, handY + (weaponPose.phase === 'slash' ? 4 : 0));
+    } else if (punchDir === 'up') {
+      strokeArms(mainColor, () => {
+        ctx.beginPath();
+        ctx.moveTo(shoulderR - 2, shoulderY);
         ctx.lineTo(14, bodyY - 36);
       });
       fist(14, bodyY - 36);
+      // rear arm hangs naturally
+      strokeArms(mainColor, () => {
+        ctx.beginPath();
+        ctx.moveTo(shoulderL, shoulderY);
+        ctx.lineTo(shoulderL - 2, handY);
+      });
+      fist(shoulderL - 2, handY);
     } else {
       strokeArms(mainColor, () => {
         ctx.beginPath();
-        ctx.moveTo(4, bodyY - 6);
-        ctx.lineTo(26, bodyY - 6);
+        ctx.moveTo(shoulderR - 2, shoulderY);
+        ctx.lineTo(26, bodyY - 4);
       });
-      fist(26, bodyY - 6);
+      fist(26, bodyY - 4);
+      strokeArms(mainColor, () => {
+        ctx.beginPath();
+        ctx.moveTo(shoulderL, shoulderY);
+        ctx.lineTo(shoulderL - 4, handY);
+      });
+      fist(shoulderL - 4, handY);
     }
   } else if (fighter.currentAction === 'block') {
+    // Guard: arms forward at sides of shield — not an X across the chest
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-2, bodyY - 10);
-      ctx.lineTo(14, bodyY + 4);
+      ctx.moveTo(shoulderL, shoulderY);
+      ctx.lineTo(8, bodyY + 2);
     });
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(6, bodyY - 10);
-      ctx.lineTo(-8, bodyY + 6);
+      ctx.moveTo(shoulderR, shoulderY);
+      ctx.lineTo(16, bodyY - 4);
     });
-    fist(12, bodyY - 2);
-    fist(-4, bodyY + 2);
+    fist(8, bodyY + 2);
+    fist(16, bodyY - 4);
 
     // Inked wooden shield disc (no neon bubble)
     ctx.save();
@@ -1277,30 +1705,30 @@ function drawFighterModel(
   } else if (fighter.currentAction === 'grab') {
     strokeArms('#c9a030', () => {
       ctx.beginPath();
-      ctx.moveTo(2, bodyY - 8);
+      ctx.moveTo(shoulderR - 4, shoulderY);
       ctx.lineTo(22, bodyY - 8);
     });
     strokeArms('#c9a030', () => {
       ctx.beginPath();
-      ctx.moveTo(2, bodyY + 2);
+      ctx.moveTo(shoulderR - 4, shoulderY + 6);
       ctx.lineTo(22, bodyY + 2);
     });
     fist(24, bodyY - 3, '#e8d080');
   } else if (fighter.currentAction.startsWith('throw_')) {
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(0, bodyY - 6);
+      ctx.moveTo(shoulderR - 4, shoulderY);
       ctx.lineTo(18, bodyY - 18);
     });
   } else if (fighter.currentAction === 'ledge_hang') {
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-2, bodyY - 6);
+      ctx.moveTo(shoulderL, shoulderY);
       ctx.lineTo(12, bodyY - 26);
     });
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(6, bodyY - 6);
+      ctx.moveTo(shoulderR, shoulderY);
       ctx.lineTo(16, bodyY - 26);
     });
     fist(12, bodyY - 26);
@@ -1308,20 +1736,42 @@ function drawFighterModel(
   } else if (fighter.grab.role === 'grabbed') {
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-6, bodyY - 6);
-      ctx.lineTo(-16, bodyY - 14);
+      ctx.moveTo(shoulderL, shoulderY);
+      ctx.lineTo(shoulderL - 8, bodyY - 14);
     });
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(shoulderR, shoulderY);
+      ctx.lineTo(shoulderR + 4, bodyY - 10);
+    });
+  } else if (!fighter.isGrounded) {
+    // Air: arms slightly out for balance
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(shoulderL, shoulderY);
+      ctx.lineTo(shoulderL - 6, bodyY + 4);
+    });
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(shoulderR, shoulderY);
+      ctx.lineTo(shoulderR + 6, bodyY + 4);
+    });
+    fist(shoulderL - 6, bodyY + 4);
+    fist(shoulderR + 6, bodyY + 4);
   } else {
+    // Idle / walk / sprint: hang from shoulders, contralateral to legs, never cross
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-4, bodyY - 6);
-      ctx.lineTo(-4 - walkCycle * 8, bodyY + 8);
+      ctx.moveTo(shoulderL, shoulderY);
+      ctx.lineTo(handLX, handY);
     });
     strokeArms(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(6, bodyY - 6);
-      ctx.lineTo(8 + walkCycle * 8, bodyY + 8);
+      ctx.moveTo(shoulderR, shoulderY);
+      ctx.lineTo(handRX, handY);
     });
+    fist(handLX, handY);
+    fist(handRX, handY);
   }
 
   drawHeldWeapon(ctx, fighter, bodyY, animTick);
@@ -1701,34 +2151,40 @@ function drawFighterAccessoriesBack(
     ctx.restore();
   } else if (id === 'lotus') {
     // ==========================================
-    // LOTUS LYLA: QIPAO SKIRT FLAPS
+    // LOTUS LYLA: QIPAO SKIRT FLAPS (feminine hip flare)
     // ==========================================
     ctx.save();
     const flap = Math.sin(animTick * 0.28) * 3;
     const speedLag = Math.abs(fighter.vx) * 0.8;
 
-    ctx.fillStyle = '#1e40af';
-    ctx.strokeStyle = '#60a5fa';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = fighter.stats.color;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
 
-    // Back skirt panel
+    // Wide back skirt panel — part of feminine silhouette
     ctx.beginPath();
-    ctx.moveTo(-8, bodyY + 10);
-    ctx.quadraticCurveTo(-14 - speedLag, bodyY + 18 + flap, -10 - speedLag, bodyY + 26 + flap);
+    ctx.moveTo(-10, bodyY + 12);
+    ctx.quadraticCurveTo(-18 - speedLag, bodyY + 20 + flap, -14 - speedLag, bodyY + 30 + flap);
     ctx.lineTo(-2, bodyY + 18);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Front skirt panel (pink trim)
-    ctx.fillStyle = '#2563eb';
-    ctx.strokeStyle = '#f9a8d4';
+    // Front skirt panel with pink trim
+    ctx.fillStyle = '#2a4a88';
     ctx.beginPath();
-    ctx.moveTo(6, bodyY + 10);
-    ctx.quadraticCurveTo(12 + speedLag * 0.4, bodyY + 18 - flap, 8 + speedLag * 0.3, bodyY + 26 - flap);
+    ctx.moveTo(8, bodyY + 12);
+    ctx.quadraticCurveTo(16 + speedLag * 0.4, bodyY + 20 - flap, 12 + speedLag * 0.3, bodyY + 30 - flap);
     ctx.lineTo(0, bodyY + 18);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = fighter.stats.secondaryColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(8, bodyY + 14);
+    ctx.quadraticCurveTo(14, bodyY + 20 - flap, 11, bodyY + 28 - flap);
     ctx.stroke();
 
     ctx.restore();
@@ -1936,33 +2392,66 @@ function drawFighterHeadAccessories(
     }
     ctx.restore();
   } else if (id === 'lotus') {
-    // Twin hair buns (odango) + forehead jewel
+    // Twin hair buns + bangs + earring — clearly feminine
     ctx.save();
     ctx.fillStyle = '#0f172a';
-    ctx.strokeStyle = '#1e3a8a';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
 
+    // Hair mass / bangs fringe behind face edge
     ctx.beginPath();
-    ctx.arc(9, headY - 12, 6, 0, Math.PI * 2);
+    ctx.moveTo(-11, headY - 4);
+    ctx.quadraticCurveTo(-8, headY - 14, 0, headY - 13);
+    ctx.quadraticCurveTo(8, headY - 14, 11, headY - 4);
+    ctx.quadraticCurveTo(6, headY - 8, 0, headY - 7);
+    ctx.quadraticCurveTo(-6, headY - 8, -11, headY - 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Twin odango buns
+    ctx.beginPath();
+    ctx.arc(10, headY - 13, 6.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(-9, headY - 12, 6, 0, Math.PI * 2);
+    ctx.arc(-10, headY - 13, 6.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    // Bun highlights / ties
-    ctx.fillStyle = '#f472b6';
+    // Bun ties
+    ctx.fillStyle = fighter.stats.secondaryColor;
     ctx.beginPath();
-    ctx.arc(9, headY - 12, 2, 0, Math.PI * 2);
-    ctx.arc(-9, headY - 12, 2, 0, Math.PI * 2);
+    ctx.arc(10, headY - 13, 2.2, 0, Math.PI * 2);
+    ctx.arc(-10, headY - 13, 2.2, 0, Math.PI * 2);
     ctx.fill();
+
+    // Side lock
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.moveTo(9, headY + 2);
+    ctx.quadraticCurveTo(14, headY + 8, 11, headY + 14);
+    ctx.quadraticCurveTo(8, headY + 8, 7, headY + 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
 
     // Forehead jewel
     ctx.fillStyle = '#fbbf24';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(0, headY - 6, 2.2, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+
+    // Small earring
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.beginPath();
+    ctx.arc(11, headY + 6, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
     ctx.restore();
   }
 }
@@ -2261,29 +2750,194 @@ function renderRespawnHalo(ctx: CanvasRenderingContext2D, fighter: Fighter) {
   ctx.restore();
 }
 
+type WeaponSwingPhase = 'idle' | 'windup' | 'slash' | 'recover';
+
+interface HeldWeaponPose {
+  kind: ItemKind | null;
+  handX: number;
+  handY: number;
+  angle: number;
+  meleeSwing: boolean;
+  phase: WeaponSwingPhase;
+  slashT: number; // 0..1 through the active slash
+  glowColor: string | null;
+}
+
+/** Frame-based weapon pose: idle bob, wind-up, slash arc, recovery. */
+function getHeldWeaponPose(fighter: Fighter, bodyY: number, animTick: number): HeldWeaponPose {
+  const attackKind = fighter.attack?.weaponKind;
+  const attackDef = attackKind ? ITEM_DEFS[attackKind] : null;
+  // Bombs leave the hand on throw; don't keep drawing them from attack.weaponKind
+  const kind =
+    fighter.heldWeapon?.kind ??
+    (attackDef && attackDef.category !== 'throwable' ? attackKind! : null);
+
+  const idle: HeldWeaponPose = {
+    kind,
+    handX: 16,
+    handY: bodyY + 2,
+    angle: -0.2 + Math.sin(animTick * 0.08) * 0.05,
+    meleeSwing: false,
+    phase: 'idle',
+    slashT: 0,
+    glowColor: kind ? ITEM_DEFS[kind].glowColor : null,
+  };
+  if (!kind) return idle;
+
+  const atk = fighter.attack;
+  const isMeleeSwing =
+    fighter.currentAction === 'punch' &&
+    !!atk?.weaponKind &&
+    ITEM_DEFS[atk.weaponKind].category === 'melee';
+
+  if (!isMeleeSwing || !atk) {
+    // Guns / throw recovery: slight forward aim pose
+    if (atk?.weaponKind && ITEM_DEFS[atk.weaponKind].category === 'ranged') {
+      return {
+        ...idle,
+        kind,
+        handX: 24,
+        handY: bodyY - 2,
+        angle: 0.05,
+        glowColor: ITEM_DEFS[kind].glowColor,
+      };
+    }
+    return { ...idle, kind, glowColor: ITEM_DEFS[kind].glowColor };
+  }
+
+  const dir = atk.direction ?? 'forward';
+  const total = Math.max(1, atk.totalFrames);
+  const startup = atk.startupFrames;
+  const activeEnd = atk.startupFrames + atk.activeFrames;
+  const frame = atk.frame;
+
+  let phase: WeaponSwingPhase;
+  let u: number; // 0..1 within phase
+  if (frame < startup) {
+    phase = 'windup';
+    u = startup <= 0 ? 1 : frame / startup;
+  } else if (frame < activeEnd) {
+    phase = 'slash';
+    u = atk.activeFrames <= 0 ? 1 : (frame - startup) / atk.activeFrames;
+  } else {
+    phase = 'recover';
+    const recoverLen = Math.max(1, total - activeEnd);
+    u = Math.min(1, (frame - activeEnd) / recoverLen);
+  }
+
+  // Ease helpers
+  const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+  const easeIn = (t: number) => t * t;
+
+  let handX: number;
+  let handY: number;
+  let angle: number;
+  let slashT = 0;
+
+  if (dir === 'up') {
+    // Cock low → slash upward
+    if (phase === 'windup') {
+      handX = 14 + u * 4;
+      handY = bodyY + 6 - u * 4;
+      angle = 0.6 - u * 0.3;
+    } else if (phase === 'slash') {
+      slashT = easeOut(u);
+      handX = 18 + slashT * 6;
+      handY = bodyY + 2 - slashT * 42;
+      angle = 0.3 - slashT * 1.7;
+    } else {
+      handX = 24 - u * 8;
+      handY = bodyY - 40 + u * 42;
+      angle = -1.4 + u * 1.2;
+    }
+  } else if (dir === 'down') {
+    // Raise high → smash down
+    if (phase === 'windup') {
+      handX = 16 + u * 6;
+      handY = bodyY - 8 - u * 22;
+      angle = -0.4 - u * 0.8;
+    } else if (phase === 'slash') {
+      slashT = easeOut(u);
+      handX = 22 + slashT * 8;
+      handY = bodyY - 30 + slashT * 46;
+      angle = -1.2 + slashT * 2.4;
+    } else {
+      handX = 30 - u * 14;
+      handY = bodyY + 16 - u * 14;
+      angle = 1.2 - u * 1.4;
+    }
+  } else {
+    // Forward slash: wind back → whip through a wide arc
+    if (phase === 'windup') {
+      const w = easeIn(u);
+      handX = 14 - w * 6;
+      handY = bodyY - 2 - w * 14;
+      angle = -0.2 - w * 1.1; // cocked up/back
+    } else if (phase === 'slash') {
+      slashT = easeOut(u);
+      handX = 10 + slashT * 28;
+      handY = bodyY - 16 + slashT * 22;
+      angle = -1.3 + slashT * 2.35; // arc down through horizontal
+    } else {
+      const r = easeOut(u);
+      handX = 38 - r * 22;
+      handY = bodyY + 6 - r * 4;
+      angle = 1.05 - r * 1.25;
+    }
+  }
+
+  return {
+    kind,
+    handX,
+    handY,
+    angle,
+    meleeSwing: true,
+    phase,
+    slashT,
+    glowColor: ITEM_DEFS[kind].glowColor,
+  };
+}
+
 function drawHeldWeapon(
   ctx: CanvasRenderingContext2D,
   fighter: Fighter,
   bodyY: number,
   animTick: number
 ) {
-  const kind = fighter.heldWeapon?.kind || fighter.attack?.weaponKind;
-  if (!kind) return;
+  const pose = getHeldWeaponPose(fighter, bodyY, animTick);
+  if (!pose.kind) return;
 
-  const swinging = fighter.currentAction === 'punch' && !!fighter.attack?.weaponKind;
-  const handX = swinging ? 28 : 16;
-  const handY = swinging ? bodyY - 8 : bodyY + 2;
-  ctx.save();
-  ctx.translate(handX, handY);
-  if (swinging) {
-    const dir = fighter.attack?.direction;
-    if (dir === 'up') ctx.rotate(-0.9);
-    else if (dir === 'down') ctx.rotate(1.1);
-    else ctx.rotate(-0.35);
-  } else {
-    ctx.rotate(-0.2 + Math.sin(animTick * 0.08) * 0.05);
+  // Motion trail / slash arc while the weapon is cutting
+  if (pose.meleeSwing && pose.phase === 'slash' && pose.slashT > 0.05) {
+    const dir = fighter.attack?.direction ?? 'forward';
+    ctx.save();
+    ctx.strokeStyle = pose.glowColor || '#f8fafc';
+    ctx.globalAlpha = 0.35 * (1 - pose.slashT * 0.5);
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (dir === 'up') {
+      ctx.arc(pose.handX - 4, bodyY - 8, 28, 0.8, 0.8 - pose.slashT * 1.6, true);
+    } else if (dir === 'down') {
+      ctx.arc(pose.handX - 6, bodyY - 6, 30, -1.2, -1.2 + pose.slashT * 2.2, false);
+    } else {
+      ctx.arc(8, bodyY - 4, 32, -1.4, -1.4 + pose.slashT * 2.2, false);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 0.18;
+    ctx.lineWidth = 10;
+    ctx.stroke();
+    ctx.restore();
   }
-  drawItemGlyph(ctx, kind, 1.05);
+
+  ctx.save();
+  ctx.translate(pose.handX, pose.handY);
+  ctx.rotate(pose.angle);
+  if (pose.meleeSwing && pose.phase === 'slash') {
+    ctx.shadowColor = pose.glowColor || '#ffffff';
+    ctx.shadowBlur = 10 + pose.slashT * 8;
+  }
+  drawItemGlyph(ctx, pose.kind, pose.meleeSwing && pose.phase === 'slash' ? 1.12 : 1.05);
   ctx.restore();
 }
 

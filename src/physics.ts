@@ -1339,16 +1339,37 @@ function checkAttackHit(
         : 48;
   const hitYOffset = atk.direction === 'up' ? -40 : atk.direction === 'down' ? 40 : 0;
   const hitXOffset = atk.direction === 'up' || atk.direction === 'down' ? 0 : attacker.facing * reach;
+  const hitRadius = isSuper ? 38 : isWeapon ? weaponDef.hitRadius : 30;
 
-  const hitbox = {
-    x: attacker.x + hitXOffset,
-    y: attacker.y + hitYOffset,
-    radius: isSuper ? 38 : isWeapon ? weaponDef.hitRadius : 30,
-  };
+  // Melee weapons: capsule from near the body to the tip so point-blank swings connect
+  let hitConnected = false;
+  let impactX = attacker.x + hitXOffset;
+  let impactY = attacker.y + hitYOffset;
+  if (isWeapon) {
+    const baseX =
+      atk.direction === 'up' || atk.direction === 'down'
+        ? attacker.x + attacker.facing * 10
+        : attacker.x + attacker.facing * 14;
+    const baseY =
+      atk.direction === 'up' ? attacker.y - 10 : atk.direction === 'down' ? attacker.y + 8 : attacker.y - 4;
+    const tipX = attacker.x + hitXOffset;
+    const tipY = attacker.y + hitYOffset;
+    const abx = tipX - baseX;
+    const aby = tipY - baseY;
+    const apx = defender.x - baseX;
+    const apy = defender.y - baseY;
+    const abLen2 = abx * abx + aby * aby;
+    const t = abLen2 <= 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLen2));
+    impactX = baseX + abx * t;
+    impactY = baseY + aby * t;
+    const dist = Math.hypot(defender.x - impactX, defender.y - impactY);
+    hitConnected = dist < hitRadius + defender.width / 2;
+  } else {
+    const dist = Math.hypot(impactX - defender.x, impactY - defender.y);
+    hitConnected = dist < hitRadius + defender.width / 2;
+  }
 
-  const dist = Math.hypot(hitbox.x - defender.x, hitbox.y - defender.y);
-
-  if (dist < hitbox.radius + defender.width / 2) {
+  if (hitConnected) {
     atk.hitLanded = true;
     defender.freezeTimer = 0;
 
@@ -1441,7 +1462,20 @@ function checkAttackHit(
         particles
       );
     } else if (isWeapon) {
-      createHitSparks(defender.x, defender.y, weaponDef.glowColor, particles, 16);
+      sound.playWeaponHit(weaponDef.kind);
+      createHitSparks(impactX, impactY, weaponDef.glowColor, particles, 22);
+      createHitSparks(defender.x, defender.y, weaponDef.color, particles, 10);
+      particles.push({
+        x: impactX,
+        y: impactY,
+        vx: 0,
+        vy: 0,
+        color: weaponDef.glowColor,
+        size: 28,
+        alpha: 0.85,
+        decay: 0.08,
+        type: 'ring',
+      });
       createHitText(defender.x, defender.y - 42, weaponDef.name.toUpperCase(), weaponDef.glowColor, particles);
     } else if (isKick) {
       sound.playAttack(attacker.stats.id, 'kick');

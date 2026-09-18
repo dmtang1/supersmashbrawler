@@ -17,7 +17,7 @@ export default function App() {
 
   const [settings, setSettings] = useState<GameSettings>({
     mode: 'cpu',
-    cpuLevel: 2, // Default to Level 2 (Easy) as requested for ease of play!
+    cpuLevel: 1, // Default Easy — soft AI so new players can land hits
     stocks: 3,
     matchDuration: 120, // 2 minutes
     stageId: 'random',
