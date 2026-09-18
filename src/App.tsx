@@ -43,6 +43,7 @@ export default function App() {
     grab: false,
     block: false,
     sprint: false,
+    special: false,
   });
 
   // Auto-enable on-screen pads for touch / coarse-pointer devices (iPhone, iPad, etc.)

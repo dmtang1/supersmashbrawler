@@ -72,6 +72,12 @@ class SoundEngine {
       case 'shinobi':
         this.playShinobiAttack(kind);
         break;
+      case 'monk':
+        this.playMonkAttack(kind);
+        break;
+      case 'lotus':
+        this.playLotusAttack(kind);
+        break;
       default:
         if (kind === 'kick') this.playKick();
         else this.playPunch();
@@ -319,6 +325,75 @@ class SoundEngine {
     voidOsc.stop(now + 0.13);
 
     this.playNoiseBurst(heavy ? 0.09 : 0.05, heavy ? 0.3 : 0.2, heavy ? 2400 : 2000);
+  }
+
+  /** Drunken Monk — loose whoosh with woody thunk */
+  private playMonkAttack(kind: 'punch' | 'kick') {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const heavy = kind === 'kick';
+
+    const whoosh = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    whoosh.type = 'triangle';
+    whoosh.frequency.setValueAtTime(heavy ? 340 : 280, now);
+    whoosh.frequency.exponentialRampToValueAtTime(heavy ? 70 : 95, now + (heavy ? 0.16 : 0.11));
+    gain.gain.setValueAtTime(heavy ? 0.34 : 0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + (heavy ? 0.18 : 0.12));
+    whoosh.connect(gain);
+    gain.connect(this.ctx.destination);
+    whoosh.start(now);
+    whoosh.stop(now + (heavy ? 0.2 : 0.13));
+
+    // Tipsy wobble overtone
+    const wobble = this.ctx.createOscillator();
+    const wobbleGain = this.ctx.createGain();
+    wobble.type = 'sine';
+    wobble.frequency.setValueAtTime(heavy ? 520 : 640, now);
+    wobble.frequency.exponentialRampToValueAtTime(180, now + 0.1);
+    wobbleGain.gain.setValueAtTime(0.12, now);
+    wobbleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    wobble.connect(wobbleGain);
+    wobbleGain.connect(this.ctx.destination);
+    wobble.start(now);
+    wobble.stop(now + 0.13);
+
+    this.playNoiseBurst(heavy ? 0.12 : 0.07, heavy ? 0.32 : 0.22, heavy ? 500 : 420);
+  }
+
+  /** Lotus Lyla — snappy kick snap with bright sparkle */
+  private playLotusAttack(kind: 'punch' | 'kick') {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const heavy = kind === 'kick';
+
+    const snap = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    snap.type = heavy ? 'square' : 'triangle';
+    snap.frequency.setValueAtTime(heavy ? 880 : 640, now);
+    snap.frequency.exponentialRampToValueAtTime(heavy ? 140 : 200, now + (heavy ? 0.11 : 0.08));
+    gain.gain.setValueAtTime(heavy ? 0.36 : 0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + (heavy ? 0.13 : 0.09));
+    snap.connect(gain);
+    gain.connect(this.ctx.destination);
+    snap.start(now);
+    snap.stop(now + (heavy ? 0.14 : 0.1));
+
+    if (heavy) {
+      const sparkle = this.ctx.createOscillator();
+      const sparkleGain = this.ctx.createGain();
+      sparkle.type = 'sine';
+      sparkle.frequency.setValueAtTime(1800, now);
+      sparkle.frequency.exponentialRampToValueAtTime(900, now + 0.07);
+      sparkleGain.gain.setValueAtTime(0.14, now);
+      sparkleGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+      sparkle.connect(sparkleGain);
+      sparkleGain.connect(this.ctx.destination);
+      sparkle.start(now);
+      sparkle.stop(now + 0.09);
+    }
+
+    this.playNoiseBurst(heavy ? 0.1 : 0.06, heavy ? 0.34 : 0.2, heavy ? 1600 : 900);
   }
 
   public playFightClash() {
@@ -675,6 +750,44 @@ class SoundEngine {
     this.playNoiseBurst(0.22, 0.45, 450);
   }
 
+  public playMonkeySpin() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(420, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.22);
+    gain.gain.setValueAtTime(0.32, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.24);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.26);
+    this.playNoiseBurst(0.16, 0.38, 380);
+  }
+
+  public playLightningKick() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1400, now);
+    osc.frequency.exponentialRampToValueAtTime(220, now + 0.1);
+    gain.gain.setValueAtTime(0.26, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.13);
+    this.playNoiseBurst(0.08, 0.3, 1800);
+  }
+
   public playShadowPhase() {
     if (!this.enabled) return;
     this.initCtx();
@@ -710,6 +823,56 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.35);
     this.playNoiseBurst(0.2, 0.5, 250);
+  }
+
+  /** Unique super finisher sting — layered whoosh + character flavor. */
+  public playSuper(fighterId: FighterId) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(520, now + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.28);
+    gain.gain.setValueAtTime(0.38, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.34);
+    this.playNoiseBurst(0.18, 0.42, 600);
+
+    switch (fighterId) {
+      case 'zephyr':
+        this.playGlide();
+        break;
+      case 'brawler':
+        this.playFireBurst();
+        break;
+      case 'yeti':
+        this.playFreeze();
+        break;
+      case 'striker':
+        this.playLightning();
+        break;
+      case 'titan':
+        this.playQuake();
+        break;
+      case 'shinobi':
+        this.playShadowPhase();
+        break;
+      case 'monk':
+        this.playMonkeySpin();
+        break;
+      case 'lotus':
+        this.playLightningKick();
+        break;
+      default:
+        break;
+    }
   }
 
   public playItemSpawn() {

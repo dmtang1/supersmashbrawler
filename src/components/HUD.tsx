@@ -17,7 +17,7 @@ import {
   ChevronLeft,
   Smartphone,
 } from 'lucide-react';
-import { Fighter, GameSettings, InputState, PERCENT_KO_THRESHOLD, SPRINT_STAMINA_MAX } from '../types';
+import { Fighter, GameSettings, InputState, PERCENT_KO_THRESHOLD, SPRINT_STAMINA_MAX, SUPER_METER_MAX } from '../types';
 import { ITEM_DEFS } from '../items';
 import { TouchControls } from './TouchControls';
 
@@ -127,6 +127,39 @@ export const HUD: React.FC<HUDProps> = ({
     );
   };
 
+  const renderSuperBar = (fighter: Fighter, align: 'left' | 'right') => {
+    const pct = Math.min(100, Math.max(0, ((fighter.superMeter ?? 0) / SUPER_METER_MAX) * 100));
+    const ready = pct >= 99.5;
+    return (
+      <div className={`flex items-center gap-1.5 mt-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+        <div
+          className={`w-20 sm:w-32 md:w-40 h-1.5 bg-slate-950 border rounded-full overflow-hidden p-[1px] ${
+            ready
+              ? 'border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.7)]'
+              : 'border-slate-700'
+          }`}
+        >
+          <div
+            className={`h-full rounded-full transition-[width] duration-100 ${
+              ready
+                ? 'bg-gradient-to-r from-amber-300 via-yellow-300 to-orange-400 animate-pulse'
+                : 'bg-gradient-to-r from-amber-700 to-amber-400'
+            }`}
+            style={{ width: `${Math.max(pct, pct > 0 ? 4 : 0)}%` }}
+          />
+        </div>
+        <span
+          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${
+            ready ? 'text-amber-300' : 'text-slate-500'
+          }`}
+          title={fighter.stats.superMove?.name}
+        >
+          {ready ? 'READY' : 'Super'}
+        </span>
+      </div>
+    );
+  };
+
   const activeGrabber = p1.grab.role === 'grabber' ? p1 : p2.grab.role === 'grabber' ? p2 : null;
   const isP1LedgeHanging = p1.currentAction === 'ledge_hang';
 
@@ -206,6 +239,7 @@ export const HUD: React.FC<HUDProps> = ({
               </span>
             </div>
             {renderSprintBar(p1, 'left')}
+            {renderSuperBar(p1, 'left')}
           </div>
         </div>
 
@@ -379,6 +413,7 @@ export const HUD: React.FC<HUDProps> = ({
               </div>
             </div>
             {renderSprintBar(p2, 'right')}
+            {renderSuperBar(p2, 'right')}
           </div>
 
           <div

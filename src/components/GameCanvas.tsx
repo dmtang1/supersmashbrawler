@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { FIGHTERS } from '../fighters';
 import { STAGES } from '../stages';
-import { createInitialFighter, updateFighterPhysics } from '../physics';
+import { createInitialFighter, resolveFighterCollision, updateFighterPhysics } from '../physics';
 import { calculateCpuInput } from '../ai';
 import {
   renderFighter,
@@ -168,7 +168,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (e.keyCode === 66) tokens.push('keyb', 'b'); // B block
       if (e.keyCode === 67) tokens.push('keyc', 'c'); // C kick
       if (e.keyCode === 86) tokens.push('keyv', 'v'); // V grab
-      if (e.keyCode === 70) tokens.push('keyf', 'f'); // F (legacy kick alias)
+      if (e.keyCode === 70) tokens.push('keyf', 'f'); // F special / super
+      if (e.keyCode === 186 || e.keyCode === 59) tokens.push('semicolon', ';'); // ; P2 special
       if (e.keyCode === 81) tokens.push('keyq', 'q'); // Q (legacy grab alias)
       if (e.keyCode === 16) {
         tokens.push('shift');
@@ -252,6 +253,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           grab: (has('KeyV', 'v', 'g', 'KeyG') || !!touch?.grab),
           block: (has('KeyB', 'b') || !!touch?.block),
           sprint: (has('ShiftLeft') || !!touch?.sprint),
+          special: (has('KeyF', 'f') || !!touch?.special),
         }
       : {
           up: (has('KeyW', 'w', 'ArrowUp', 'up', 'z', 'KeyZ') || !!touch?.up),
@@ -259,10 +261,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           left: (has('KeyA', 'a', 'ArrowLeft', 'left') || !!touch?.left),
           right: (has('KeyD', 'd', 'ArrowRight', 'right') || !!touch?.right),
           punch: (has('Space', ' ', 'Enter', 'enter', 'j', 'KeyJ', 'Numpad0') || !!touch?.punch),
-          kick: (has('KeyC', 'c', 'x', 'KeyF', 'f') || !!touch?.kick),
+          kick: (has('KeyC', 'c', 'x') || !!touch?.kick),
           grab: (has('KeyV', 'v', 'g', 'KeyG', 'KeyQ', 'q') || !!touch?.grab),
           block: (has('KeyB', 'b') || !!touch?.block),
           sprint: (has('ShiftLeft', 'ShiftRight', 'Shift', 'shift') || !!touch?.sprint),
+          special: (has('KeyF', 'f') || !!touch?.special),
         };
 
     if (onActiveInputState) {
@@ -279,6 +282,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       grab: false,
       block: false,
       sprint: false,
+      special: false,
     };
 
     if (is2P) {
@@ -292,6 +296,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         grab: has('KeyK', 'k', 'Period', '.', 'Numpad3'),
         block: has('KeyO', 'o', 'Comma', ','),
         sprint: has('ShiftRight', 'KeyP', 'p'),
+        special: has('Semicolon', ';', 'semicolon'),
       };
     } else if (settings.mode === 'cpu') {
       p2Input = calculateCpuInput(
@@ -313,6 +318,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         grab: false,
         block: false,
         sprint: false,
+        special: false,
       };
     }
 
@@ -362,6 +368,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           addScreenShake,
           itemWorldRef.current
         );
+
+        // Soft body collision — keep fighters from nesting / dragging together
+        resolveFighterCollision(p1Ref.current, p2Ref.current, stageRef.current);
 
         const fighters = [p1Ref.current, p2Ref.current];
         updateWorldItems(itemWorldRef.current, stageRef.current, particlesRef.current);

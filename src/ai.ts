@@ -1,4 +1,4 @@
-import { Fighter, InputState, Stage, WorldItem } from './types';
+import { Fighter, InputState, Stage, WorldItem, SUPER_METER_MAX } from './types';
 import { ITEM_DEFS } from './items';
 
 export function calculateCpuInput(
@@ -18,10 +18,30 @@ export function calculateCpuInput(
     grab: false,
     block: false,
     sprint: false,
+    special: false,
   };
 
   if (cpu.stocks <= 0 || cpu.respawnTimer > 0) {
     return input;
+  }
+
+  // Fire unique super when meter is ready and opponent is in range
+  if (
+    (cpu.superMeter ?? 0) >= SUPER_METER_MAX &&
+    cpu.attack === null &&
+    cpu.hitstun <= 0 &&
+    cpu.grab.role === 'none' &&
+    !cpu.ledgeHang &&
+    !(cpu.freezeTimer && cpu.freezeTimer > 0)
+  ) {
+    const dist = Math.hypot(player.x - cpu.x, player.y - cpu.y);
+    const fireChance = cpuLevel <= 3 ? 0.35 : 0.55 + cpuLevel * 0.04;
+    if (dist < 220 && Math.random() < fireChance) {
+      input.special = true;
+      if (player.x > cpu.x) input.right = true;
+      else input.left = true;
+      return input;
+    }
   }
 
   // If CPU is currently hanging on the platform ledge:
@@ -173,8 +193,10 @@ export function calculateCpuInput(
     return input;
   }
 
-  // Approach / spacing
-  if (Math.abs(dx) > (cpuLevel <= 2 ? 80 : 60)) {
+  // Approach / spacing — stop short of body overlap so CPU doesn't nest inside the player
+  const approachDist = cpuLevel <= 2 ? 80 : 60;
+  const minSpacing = (cpu.width + player.width) * 0.35;
+  if (Math.abs(dx) > approachDist) {
     if (dx > 0) {
       input.right = true;
     } else {
@@ -183,6 +205,13 @@ export function calculateCpuInput(
     // Sprint if far and high enough level (Lv 4+)
     if (Math.abs(dx) > 150 && cpuLevel >= 4) {
       input.sprint = true;
+    }
+  } else if (Math.abs(dx) < minSpacing && Math.abs(dy) < 50) {
+    // Too close: step back to create space instead of sitting inside the opponent
+    if (dx > 0) {
+      input.left = true;
+    } else if (dx < 0) {
+      input.right = true;
     }
   }
 

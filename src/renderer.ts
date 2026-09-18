@@ -197,6 +197,10 @@ const PORTRAIT_LAYOUT: Record<
   titan: { worldW: 90, worldH: 100, offsetY: 8 },
   // Flowing scarf + kitsune ears
   shinobi: { worldW: 100, worldH: 98, offsetY: 6 },
+  // Sake gourd + monkey ears + sash
+  monk: { worldW: 92, worldH: 100, offsetY: 8 },
+  // Twin buns + skirt flaps
+  lotus: { worldW: 88, worldH: 100, offsetY: 8 },
 };
 
 function createPortraitFighter(stats: FighterStats): Fighter {
@@ -239,6 +243,12 @@ function createPortraitFighter(stats: FighterStats): Fighter {
     shadowPhaseTimer: 0,
     hasSuperArmor: false,
     wingFlapTick: 0,
+    tipsyCharge: 0,
+    tipsyTimer: 0,
+    lightningKickFlash: 0,
+    superMeter: 0,
+    freezeTimer: 0,
+    superFlash: 0,
     heldWeapon: null,
   };
 
@@ -257,6 +267,13 @@ function createPortraitFighter(stats: FighterStats): Fighter {
     case 'brawler':
       // Soft flame aura so horns/headband read as fire fighter
       fighter.burnTimer = 30;
+      break;
+    case 'monk':
+      fighter.tipsyCharge = 100;
+      break;
+    case 'lotus':
+      fighter.currentAction = 'kick';
+      fighter.lightningKickFlash = 20;
       break;
     default:
       break;
@@ -360,7 +377,18 @@ function drawFighterModel(
   ctx.lineCap = 'round';
 
   const legYStart = bodyY + 12;
-  if (fighter.currentAction === 'kick') {
+  if (fighter.currentAction === 'super') {
+    // Dramatic finisher silhouette — wide stance / spinning kick
+    const spin = Math.sin(animTick * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(-6, legYStart);
+    ctx.lineTo(-18 - spin * 8, legYStart + 10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(6, legYStart);
+    ctx.lineTo(22 + spin * 10, legYStart - 6);
+    ctx.stroke();
+  } else if (fighter.currentAction === 'kick') {
     // Dynamic kicking pose
     const kickDir = fighter.attack?.direction;
     if (kickDir === 'down') {
@@ -479,7 +507,26 @@ function drawFighterModel(
   ctx.strokeStyle = mainColor;
   ctx.lineWidth = 6;
 
-  if (fighter.currentAction === 'punch') {
+  if (fighter.currentAction === 'super') {
+    const spin = Math.sin(animTick * 0.6);
+    ctx.strokeStyle = secColor;
+    ctx.lineWidth = 7;
+    ctx.shadowColor = fighter.stats.glowColor;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(2, bodyY - 6);
+    ctx.lineTo(28 + spin * 6, bodyY - 10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-2, bodyY);
+    ctx.lineTo(-20 - spin * 8, bodyY + 8);
+    ctx.stroke();
+    ctx.fillStyle = mainColor;
+    ctx.beginPath();
+    ctx.arc(28 + spin * 6, bodyY - 10, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  } else if (fighter.currentAction === 'punch') {
     const punchDir = fighter.attack?.direction;
     if (punchDir === 'up') {
       // Uppercut
@@ -923,6 +970,90 @@ function drawFighterAccessoriesBack(
     ctx.fill();
 
     ctx.restore();
+  } else if (id === 'monk') {
+    // ==========================================
+    // DRUNKEN MONK: SAKE GOURD + JADE SASH
+    // ==========================================
+    ctx.save();
+    const sashWave = Math.sin(animTick * 0.3) * 4;
+    const speedLag = Math.abs(fighter.vx) * 1.2;
+
+    // Jade sash tails
+    ctx.fillStyle = '#65a30d';
+    ctx.beginPath();
+    ctx.moveTo(-4, bodyY + 4);
+    ctx.quadraticCurveTo(-14 - speedLag, bodyY + 10 + sashWave, -26 - speedLag, bodyY + 16 + sashWave);
+    ctx.lineTo(-22 - speedLag, bodyY + 20 + sashWave);
+    ctx.quadraticCurveTo(-12 - speedLag, bodyY + 12 + sashWave, -2, bodyY + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#a3e635';
+    ctx.beginPath();
+    ctx.moveTo(-2, bodyY + 2);
+    ctx.quadraticCurveTo(-10 - speedLag, bodyY + 14 + sashWave * 0.7, -20 - speedLag, bodyY + 22 + sashWave);
+    ctx.lineTo(-16 - speedLag, bodyY + 24 + sashWave);
+    ctx.quadraticCurveTo(-8 - speedLag, bodyY + 14, 0, bodyY + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Sake gourd on back
+    ctx.fillStyle = '#854d0e';
+    ctx.strokeStyle = '#ca8a04';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(-16, bodyY - 2, 7, 10, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Gourd cork
+    ctx.fillStyle = '#d6d3d1';
+    ctx.beginPath();
+    ctx.roundRect(-20, bodyY - 14, 5, 5, 1);
+    ctx.fill();
+
+    // Rope wrap
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-21, bodyY - 2);
+    ctx.lineTo(-11, bodyY);
+    ctx.stroke();
+
+    ctx.restore();
+  } else if (id === 'lotus') {
+    // ==========================================
+    // LOTUS LYLA: QIPAO SKIRT FLAPS
+    // ==========================================
+    ctx.save();
+    const flap = Math.sin(animTick * 0.28) * 3;
+    const speedLag = Math.abs(fighter.vx) * 0.8;
+
+    ctx.fillStyle = '#1e40af';
+    ctx.strokeStyle = '#60a5fa';
+    ctx.lineWidth = 1.5;
+
+    // Back skirt panel
+    ctx.beginPath();
+    ctx.moveTo(-8, bodyY + 10);
+    ctx.quadraticCurveTo(-14 - speedLag, bodyY + 18 + flap, -10 - speedLag, bodyY + 26 + flap);
+    ctx.lineTo(-2, bodyY + 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Front skirt panel (pink trim)
+    ctx.fillStyle = '#2563eb';
+    ctx.strokeStyle = '#f9a8d4';
+    ctx.beginPath();
+    ctx.moveTo(6, bodyY + 10);
+    ctx.quadraticCurveTo(12 + speedLag * 0.4, bodyY + 18 - flap, 8 + speedLag * 0.3, bodyY + 26 - flap);
+    ctx.lineTo(0, bodyY + 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
   }
 }
 
@@ -1092,6 +1223,66 @@ function drawFighterHeadAccessories(
     ctx.fill();
     ctx.stroke();
     ctx.restore();
+  } else if (id === 'monk') {
+    // Round monkey ears + prayer bead band
+    ctx.save();
+    ctx.fillStyle = '#a16207';
+    ctx.strokeStyle = '#ca8a04';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.ellipse(10, headY - 2, 5, 6, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(-10, headY - 2, 5, 6, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner ear
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath();
+    ctx.ellipse(10, headY - 2, 2.5, 3, 0.15, 0, Math.PI * 2);
+    ctx.ellipse(-10, headY - 2, 2.5, 3, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Prayer beads across forehead
+    ctx.fillStyle = '#84cc16';
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.arc(i * 3.2, headY - 7, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  } else if (id === 'lotus') {
+    // Twin hair buns (odango) + forehead jewel
+    ctx.save();
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.arc(9, headY - 12, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-9, headY - 12, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Bun highlights / ties
+    ctx.fillStyle = '#f472b6';
+    ctx.beginPath();
+    ctx.arc(9, headY - 12, 2, 0, Math.PI * 2);
+    ctx.arc(-9, headY - 12, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Forehead jewel
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(0, headY - 6, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -1145,6 +1336,30 @@ function drawFighterChestEmblem(
     ctx.moveTo(-6, bodyY - 8);
     ctx.lineTo(6, bodyY + 4);
     ctx.stroke();
+  } else if (id === 'monk') {
+    // Jade monkey medallion
+    ctx.fillStyle = '#a3e635';
+    ctx.strokeStyle = '#365314';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, bodyY - 2, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (id === 'lotus') {
+    // Spiked bracelet / wrist cuff markers on torso sash
+    ctx.fillStyle = '#f472b6';
+    ctx.beginPath();
+    ctx.roundRect(-7, bodyY + 2, 14, 4, 1);
+    ctx.fill();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath();
+    ctx.moveTo(-5, bodyY + 2);
+    ctx.lineTo(-3, bodyY - 1);
+    ctx.lineTo(-1, bodyY + 2);
+    ctx.moveTo(1, bodyY + 2);
+    ctx.lineTo(3, bodyY - 1);
+    ctx.lineTo(5, bodyY + 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -1175,6 +1390,40 @@ function drawFighterStatusEffects(
       const offsetY = Math.cos(animTick * 0.15 + i * 1.5) * 20;
       ctx.fillRect(offsetX, bodyY + offsetY, 3, 3);
     }
+  }
+
+  // 1b. GLACIAL LOCK hard freeze
+  if (fighter.freezeTimer && fighter.freezeTimer > 0) {
+    ctx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.95)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(-18, bodyY - 20, 36, 56, 8);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // 1c. Super flash aura
+  if (fighter.superFlash && fighter.superFlash > 0) {
+    ctx.strokeStyle = fighter.stats.secondaryColor;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = fighter.stats.glowColor;
+    ctx.shadowBlur = 18;
+    ctx.globalAlpha = Math.min(1, fighter.superFlash / 20);
+    ctx.beginPath();
+    ctx.ellipse(0, bodyY, 26 + Math.sin(animTick * 0.4) * 4, 34, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // Ready super meter shimmer
+  if ((fighter.superMeter ?? 0) >= 100 && fighter.currentAction !== 'super') {
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, headY - 18, 5 + Math.sin(animTick * 0.35) * 1.5, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   // 2. BURN FLAMES: Lingering fire embers
@@ -1226,6 +1475,53 @@ function drawFighterStatusEffects(
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.ellipse(0, bodyY + 14, 28, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 6. TIPSY CHARGE 100%: Amber swirl / sake glow
+  if (fighter.tipsyCharge && fighter.tipsyCharge >= 100) {
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, bodyY, 18 + Math.sin(animTick * 0.4) * 3, 24, animTick * 0.08, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(163, 230, 53, 0.35)';
+    ctx.beginPath();
+    ctx.arc(Math.sin(animTick * 0.3) * 12, headY - 8, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 7. TIPSY STUMBLE on victim
+  if (fighter.tipsyTimer && fighter.tipsyTimer > 0) {
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.25)';
+    ctx.beginPath();
+    ctx.roundRect(-14, bodyY - 16, 28, 48, 8);
+    ctx.fill();
+    ctx.fillStyle = '#fef08a';
+    for (let i = 0; i < 3; i++) {
+      const ox = Math.sin(animTick * 0.25 + i) * 14;
+      const oy = Math.cos(animTick * 0.2 + i * 1.4) * 10;
+      ctx.beginPath();
+      ctx.arc(ox, bodyY + oy - 8, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 8. LIGHTNING KICK FLASH
+  if (fighter.lightningKickFlash && fighter.lightningKickFlash > 0) {
+    ctx.strokeStyle = '#93c5fd';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const kickX = 16 + Math.sin(animTick * 0.8) * 4;
+    ctx.moveTo(kickX, bodyY + 4);
+    ctx.lineTo(kickX + 10, bodyY + 14);
+    ctx.lineTo(kickX - 2, bodyY + 22);
+    ctx.stroke();
+    ctx.strokeStyle = '#f9a8d4';
+    ctx.beginPath();
+    ctx.moveTo(kickX - 6, bodyY + 2);
+    ctx.lineTo(kickX + 4, bodyY + 12);
+    ctx.lineTo(kickX - 8, bodyY + 20);
     ctx.stroke();
   }
 

@@ -18,6 +18,7 @@ const ACTION_CODES: Record<keyof InputState, string> = {
   grab: 'KeyV',
   block: 'KeyB',
   sprint: 'ShiftLeft',
+  special: 'KeyF',
 };
 
 type DirKey = 'up' | 'down' | 'left' | 'right';
@@ -288,6 +289,14 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       <div className="pointer-events-none absolute bottom-2 right-2 sm:bottom-3 sm:right-3 flex flex-col items-end gap-2">
         <div className="pointer-events-none flex items-end gap-2">
           <div className="flex flex-col gap-2">
+            <ActionButton
+              id="touch-special"
+              label="Super"
+              active={actActive('special')}
+              tone="amber"
+              size="md"
+              {...bindAction('special')}
+            />
             <ActionButton
               id="touch-sprint"
               label="Sprint"

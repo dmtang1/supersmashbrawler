@@ -125,6 +125,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           label="P1"
           labelColor={selectedP1.color}
           selectedName={selectedP1.name}
+          selectedSuper={selectedP1.superMove.name}
           selectedId={settings.p1Fighter}
           fighters={fighterList}
           idPrefix="select-p1"
@@ -134,6 +135,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           label={settings.mode === 'cpu' ? 'CPU' : settings.mode === 'training' ? 'Dummy' : 'P2'}
           labelColor={selectedP2.color}
           selectedName={selectedP2.name}
+          selectedSuper={selectedP2.superMove.name}
           selectedId={settings.p2Fighter}
           fighters={fighterList}
           idPrefix="select-p2"
@@ -254,6 +256,7 @@ interface FighterPanelProps {
   label: string;
   labelColor: string;
   selectedName: string;
+  selectedSuper?: string;
   selectedId: FighterId;
   fighters: (typeof FIGHTERS)[FighterId][];
   idPrefix: string;
@@ -264,22 +267,30 @@ const FighterPanel: React.FC<FighterPanelProps> = ({
   label,
   labelColor,
   selectedName,
+  selectedSuper,
   selectedId,
   fighters,
   idPrefix,
   onSelect,
 }) => (
   <section className="bg-slate-900/80 border border-slate-800 rounded-xl sm:rounded-2xl p-1.5 sm:p-3 flex flex-col min-h-0 overflow-hidden">
-    <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2 shrink-0">
+    <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2 shrink-0 min-w-0">
       <span
-        className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-black uppercase text-slate-950"
+        className="px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-black uppercase text-slate-950 shrink-0"
         style={{ backgroundColor: labelColor }}
       >
         {label}
       </span>
-      <span className="text-[11px] sm:text-sm font-bold text-white truncate">{selectedName}</span>
+      <div className="min-w-0 flex flex-col">
+        <span className="text-[11px] sm:text-sm font-bold text-white truncate">{selectedName}</span>
+        {selectedSuper && (
+          <span className="text-[9px] sm:text-[10px] font-semibold text-amber-300/90 truncate">
+            Super: {selectedSuper}
+          </span>
+        )}
+      </div>
     </div>
-    <div className="grid grid-cols-3 grid-rows-2 gap-1 sm:gap-1.5 flex-1 min-h-0">
+    <div className="grid grid-cols-4 grid-rows-2 gap-1 sm:gap-1.5 flex-1 min-h-0">
       {fighters.map((f) => {
         const isSelected = selectedId === f.id;
         return (

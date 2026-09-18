@@ -3,12 +3,20 @@ import { ITEM_DEFS, tossHeldWeapon, useHeldWeapon } from './items';
 import {
   AttackState,
   Fighter,
+  FighterId,
   InputState,
   ItemWorld,
   Particle,
   Stage,
   PERCENT_KO_THRESHOLD,
   SPRINT_STAMINA_MAX,
+  SUPER_METER_MAX,
+  SUPER_METER_GAIN_DEALT,
+  SUPER_METER_GAIN_TAKEN,
+  SUPER_METER_PASSIVE_PER_FRAME,
+  SUPER_METER_PUMMEL_DEALT,
+  SUPER_METER_PUMMEL_TAKEN,
+  SUPER_METER_ON_KO_KEEP,
 } from './types';
 
 export const GRAVITY = 0.65;
@@ -88,6 +96,12 @@ export function createInitialFighter(
     shadowPhaseTimer: 0,
     hasSuperArmor: false,
     wingFlapTick: 0,
+    tipsyCharge: 0,
+    tipsyTimer: 0,
+    lightningKickFlash: 0,
+    superMeter: 0,
+    freezeTimer: 0,
+    superFlash: 0,
     heldWeapon: null,
   };
 }
@@ -180,13 +194,74 @@ export function updateFighterPhysics(
     fighter.shadowPhaseTimer--;
   }
 
-  // Titan Super Armor status during startup of attacks
+  if (fighter.lightningKickFlash && fighter.lightningKickFlash > 0) {
+    fighter.lightningKickFlash--;
+  }
+
+  if (fighter.superFlash && fighter.superFlash > 0) {
+    fighter.superFlash--;
+  }
+
+  // Soft meter floor so stalling matches still reach READY eventually
+  gainSuperMeter(fighter, SUPER_METER_PASSIVE_PER_FRAME);
+
+  // Drunken stumble: tipsy victims wobble and briefly lose control
+  if (fighter.tipsyTimer && fighter.tipsyTimer > 0) {
+    fighter.tipsyTimer--;
+    if (fighter.hitstun <= 0 && fighter.grab.role === 'none' && !fighter.ledgeHang) {
+      fighter.vx += Math.sin(fighter.tipsyTimer * 0.55) * 1.35;
+      if (fighter.tipsyTimer % 28 === 0) {
+        fighter.facing = (fighter.facing === 1 ? -1 : 1) as 1 | -1;
+        particles.push({
+          x: fighter.x,
+          y: fighter.y - 24,
+          vx: (Math.random() - 0.5) * 2,
+          vy: -1.5,
+          color: '#fde047',
+          size: 5,
+          alpha: 0.9,
+          decay: 0.06,
+          type: 'spark',
+        });
+      }
+    }
+  }
+
+  // Titan Super Armor status during startup of attacks (and entire Titan Crush)
   if (fighter.stats.id === 'titan') {
-    if (fighter.attack && fighter.attack.frame < fighter.attack.startupFrames + 8) {
+    const crushActive = fighter.attack?.type === 'super';
+    if (
+      crushActive ||
+      (fighter.attack && fighter.attack.frame < fighter.attack.startupFrames + 8)
+    ) {
       fighter.hasSuperArmor = true;
     } else {
       fighter.hasSuperArmor = false;
     }
+  }
+
+  // Glacial Lock: hard freeze — no inputs, locked in place
+  if (fighter.freezeTimer && fighter.freezeTimer > 0) {
+    fighter.freezeTimer--;
+    fighter.vx = 0;
+    fighter.vy = 0;
+    fighter.currentAction = 'hitstun';
+    fighter.attack = null;
+    if (fighter.freezeTimer % 12 === 0) {
+      particles.push({
+        x: fighter.x + (Math.random() - 0.5) * 18,
+        y: fighter.y + (Math.random() - 0.5) * 28,
+        vx: 0,
+        vy: -0.6,
+        color: '#e0f2fe',
+        size: 4,
+        alpha: 0.95,
+        decay: 0.04,
+        type: 'spark',
+      });
+    }
+    // Pin position (skip gravity) so ice lock doesn't drift
+    return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
   }
 
   const sprintLocked =
@@ -333,8 +408,12 @@ export function updateFighterPhysics(
     fighter.y = opponent.y;
     fighter.facing = (opponent.facing * -1) as 1 | -1;
 
-    // Grab break breakout mash or timer countdown
+    // Timer countdown + mash breakout (punch/kick/grab inputs shorten the hold)
     fighter.grab.duration--;
+    if (input.punch || input.kick || input.grab) {
+      fighter.grab.duration -= 4;
+    }
+    opponent.grab.duration = fighter.grab.duration;
     if (fighter.grab.duration <= 0) {
       // Break free!
       fighter.grab = { role: 'none', duration: 0, maxDuration: 0 };
@@ -386,6 +465,8 @@ export function updateFighterPhysics(
     // Pummel check (Space or Kick while grabbing)
     if ((input.punch || input.kick) && fighter.actionTimer % 20 === 0) {
       opponent.damagePercent += 3;
+      gainSuperMeter(fighter, SUPER_METER_PUMMEL_DEALT);
+      gainSuperMeter(opponent, SUPER_METER_PUMMEL_TAKEN);
       sound.playAttack(fighter.stats.id, input.kick ? 'kick' : 'punch');
       createHitSparks(opponent.x, opponent.y, '#f59e0b', particles, 5);
       addScreenShake(2, 5);
@@ -399,14 +480,29 @@ export function updateFighterPhysics(
     return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
   }
 
-  // Handle Attacks (punch, kick, whiffed grab, directional throws)
+  // Handle Attacks (punch, kick, whiffed grab, directional throws, supers)
   if (fighter.attack) {
     fighter.attack.frame++;
     const atk = fighter.attack;
 
-    // Active hit frames
+    if (atk.type === 'super') {
+      updateSuperAttack(fighter, opponent, atk, stage, particles, addScreenShake);
+    }
+
+    // Active hit frames (Lyla lightning kicks / supers re-check on intervals)
     if (atk.frame >= atk.startupFrames && atk.frame < atk.startupFrames + atk.activeFrames) {
-      if (!atk.hitLanded) {
+      const frameInActive = atk.frame - atk.startupFrames;
+      const isLotusKick = fighter.stats.id === 'lotus' && atk.type === 'kick';
+      const isMultiSuper =
+        atk.type === 'super' &&
+        (fighter.stats.id === 'lotus' || fighter.stats.id === 'monk' || fighter.stats.id === 'zephyr');
+      if (isLotusKick || isMultiSuper) {
+        const interval = fighter.stats.id === 'lotus' && atk.type === 'super' ? 4 : isLotusKick ? 5 : 6;
+        if (frameInActive % interval === 0) {
+          atk.hitLanded = false;
+          checkAttackHit(fighter, opponent, atk, particles, addScreenShake);
+        }
+      } else if (!atk.hitLanded) {
         checkAttackHit(fighter, opponent, atk, particles, addScreenShake);
       }
     }
@@ -415,6 +511,7 @@ export function updateFighterPhysics(
     if (atk.frame >= atk.totalFrames) {
       fighter.attack = null;
       fighter.currentAction = fighter.isGrounded ? 'idle' : 'fall';
+      if (fighter.stats.id === 'titan') fighter.hasSuperArmor = false;
     }
 
     // Normal friction on ground, air drift and momentum in air
@@ -468,7 +565,7 @@ export function updateFighterPhysics(
 
   // Horizontal movement
   const frostMult = fighter.frostbiteTimer && fighter.frostbiteTimer > 0 ? 0.6 : 1;
-  const isBlocking = input.block && fighter.isGrounded && !fighter.ledgeHang;
+  const isBlocking = input.block && !fighter.ledgeHang;
   const blockMult = isBlocking ? 0.28 : 1;
   const targetSpeed =
     (fighter.isSprinting ? fighter.stats.sprintSpeed : fighter.stats.walkSpeed) * frostMult * blockMult;
@@ -498,6 +595,17 @@ export function updateFighterPhysics(
       100,
       (fighter.staticCharge || 0) + (fighter.isSprinting ? 1.4 : 0.7)
     );
+  }
+
+  // Drunken Monk: Moving builds Tipsy Charge + drunken sway wobble
+  if (fighter.stats.id === 'monk' && (input.left || input.right)) {
+    fighter.tipsyCharge = Math.min(
+      100,
+      (fighter.tipsyCharge || 0) + (fighter.isSprinting ? 1.5 : 0.85)
+    );
+    if (fighter.isGrounded && fighter.hitstun <= 0) {
+      fighter.vx += Math.sin((fighter.tipsyCharge || 0) * 0.18) * 0.55;
+    }
   }
 
   // Shadow Shinobi: Sprint initiates Shadow Phase Evasion
@@ -571,11 +679,13 @@ export function updateFighterPhysics(
     fighter.vy = Math.min(fighter.vy + 1.2, TERMINAL_VELOCITY);
   }
 
-  // Hold B to block punches/kicks (grabs still break through)
-  const guarding = input.block && fighter.isGrounded && !fighter.ledgeHang;
+  // Hold B to block punches/kicks in air or on ground (grabs still break through)
+  const guarding = input.block && !fighter.ledgeHang;
   if (guarding) {
     fighter.currentAction = 'block';
     fighter.isSprinting = false;
+  } else if (input.special && (fighter.superMeter ?? 0) >= SUPER_METER_MAX) {
+    startSuper(fighter, opponent, stage, particles, addScreenShake);
   } else if (input.grab) {
     if (fighter.heldWeapon) {
       tossHeldWeapon(fighter, itemWorld, particles);
@@ -692,6 +802,8 @@ export function executeThrow(
   // Base and scaling calculations based on opponent's damage %
   const dmg = fighter.stats.throwDamage;
   opponent.damagePercent += dmg;
+  gainSuperMeter(fighter, dmg * SUPER_METER_GAIN_DEALT);
+  gainSuperMeter(opponent, dmg * SUPER_METER_GAIN_TAKEN);
   const pct = opponent.damagePercent;
   const wt = opponent.stats.weight;
 
@@ -817,19 +929,366 @@ function startKick(fighter: Fighter, input: InputState) {
   sound.playAttack(fighter.stats.id, 'kick');
   const isUp = input.up;
   const isDown = input.down && !fighter.isGrounded;
+  const isLotus = fighter.stats.id === 'lotus';
 
   fighter.attack = {
     type: 'kick',
     frame: 0,
-    totalFrames: 24,
-    startupFrames: 5,
-    activeFrames: 8,
+    totalFrames: isLotus ? 28 : 24,
+    startupFrames: isLotus ? 3 : 5,
+    activeFrames: isLotus ? 16 : 8,
     hitLanded: false,
+    hitTargets: [],
     direction: isDown ? 'down' : isUp ? 'up' : 'forward',
   };
   fighter.currentAction = 'kick';
   if (isDown) {
     fighter.vy = 12; // Dive kick / stomp
+  }
+}
+
+function gainSuperMeter(fighter: Fighter, amount: number) {
+  if (fighter.stocks <= 0 || fighter.respawnTimer > 0) return;
+  if (fighter.attack?.type === 'super') return;
+  fighter.superMeter = Math.min(SUPER_METER_MAX, (fighter.superMeter ?? 0) + amount);
+}
+
+function startSuper(
+  fighter: Fighter,
+  opponent: Fighter,
+  stage: Stage,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void
+) {
+  if ((fighter.superMeter ?? 0) < SUPER_METER_MAX) return;
+  if (fighter.attack || fighter.hitstun > 0 || fighter.grab.role !== 'none' || fighter.ledgeHang) {
+    return;
+  }
+
+  fighter.superMeter = 0;
+  fighter.superFlash = 40;
+  const id = fighter.stats.id;
+  const name = fighter.stats.superMove.name;
+  sound.playSuper(id);
+  createHitText(fighter.x, fighter.y - 50, name.toUpperCase() + '!', fighter.stats.secondaryColor, particles);
+  addScreenShake(5, 10);
+
+  switch (id) {
+    case 'zephyr': {
+      // Tempest Dive — rise then cyclone dive
+      fighter.isGrounded = false;
+      fighter.vy = -15;
+      fighter.vx = fighter.facing * 2;
+      fighter.isGliding = false;
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 52,
+        startupFrames: 10,
+        activeFrames: 32,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'down',
+        superHitCount: 0,
+      };
+      break;
+    }
+    case 'brawler': {
+      // Inferno Meteor — fireball dive
+      fighter.isGrounded = false;
+      fighter.vy = -6;
+      fighter.vx = fighter.facing * 5;
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 44,
+        startupFrames: 6,
+        activeFrames: 28,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'down',
+        superHitCount: 0,
+      };
+      break;
+    }
+    case 'yeti': {
+      // Glacial Lock — ground slam freeze
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 36,
+        startupFrames: 8,
+        activeFrames: 12,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'down',
+        superHitCount: 0,
+      };
+      if (fighter.isGrounded) {
+        fighter.vy = -4;
+      } else {
+        fighter.vy = 14;
+      }
+      break;
+    }
+    case 'striker': {
+      // Thunder Rail — lightning dash across stage
+      fighter.invincibleFrames = Math.max(fighter.invincibleFrames, 22);
+      fighter.vx = fighter.facing * 32;
+      fighter.vy = 0;
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 28,
+        startupFrames: 2,
+        activeFrames: 18,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'forward',
+        superHitCount: 0,
+      };
+      createLightningBurst(fighter.x, fighter.y, particles);
+      break;
+    }
+    case 'titan': {
+      // Titan Crush — armored charge into spike
+      fighter.hasSuperArmor = true;
+      fighter.vx = fighter.facing * 14;
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 40,
+        startupFrames: 4,
+        activeFrames: 22,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'forward',
+        superHitCount: 0,
+      };
+      break;
+    }
+    case 'shinobi': {
+      // Void Ambush — vanish and reappear behind foe
+      createShadowPhaseSmoke(fighter.x, fighter.y, particles);
+      const behind = opponent.x - opponent.facing * 48;
+      fighter.x = behind;
+      fighter.y = opponent.y;
+      fighter.facing = opponent.facing;
+      fighter.vx = 0;
+      fighter.vy = 0;
+      fighter.invincibleFrames = Math.max(fighter.invincibleFrames, 14);
+      createShadowPhaseSmoke(fighter.x, fighter.y, particles);
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 30,
+        startupFrames: 4,
+        activeFrames: 12,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'forward',
+        superHitCount: 0,
+      };
+      break;
+    }
+    case 'monk': {
+      // Drunken Whirlwind — multi-hit spin
+      fighter.tipsyCharge = 100;
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 48,
+        startupFrames: 4,
+        activeFrames: 36,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'forward',
+        superHitCount: 0,
+      };
+      break;
+    }
+    case 'lotus': {
+      // Thousand Lotus Kicks — kick storm into rising finisher
+      fighter.attack = {
+        type: 'super',
+        frame: 0,
+        totalFrames: 56,
+        startupFrames: 3,
+        activeFrames: 44,
+        hitLanded: false,
+        hitTargets: [],
+        direction: 'forward',
+        superHitCount: 0,
+      };
+      break;
+    }
+    default:
+      fighter.superMeter = SUPER_METER_MAX;
+      return;
+  }
+
+      fighter.currentAction = 'super';
+}
+
+function updateSuperAttack(
+  fighter: Fighter,
+  opponent: Fighter,
+  atk: AttackState,
+  stage: Stage,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void
+) {
+  const id = fighter.stats.id;
+
+  switch (id) {
+    case 'zephyr': {
+      if (atk.frame < atk.startupFrames) {
+        fighter.vy = Math.min(fighter.vy, -8);
+        if (Math.random() < 0.4) {
+          particles.push({
+            x: fighter.x - fighter.facing * 16,
+            y: fighter.y,
+            vx: -fighter.facing * 2,
+            vy: 1,
+            color: '#bae6fd',
+            size: 5,
+            alpha: 0.85,
+            decay: 0.06,
+            type: 'smoke',
+          });
+        }
+      } else {
+        fighter.vy = Math.max(fighter.vy, 13);
+        fighter.vx = fighter.facing * 5;
+        // Vacuum pull
+        const dist = Math.hypot(opponent.x - fighter.x, opponent.y - fighter.y);
+        if (dist < 140 && opponent.invincibleFrames <= 0 && opponent.grab.role === 'none') {
+          opponent.vx += (fighter.x - opponent.x) * 0.09;
+          opponent.vy += (fighter.y - opponent.y) * 0.07;
+        }
+        if (Math.random() < 0.5) {
+          createWindGust(fighter.x, fighter.y, fighter.facing, particles);
+        }
+      }
+      break;
+    }
+    case 'brawler': {
+      if (atk.frame >= atk.startupFrames) {
+        fighter.vy = Math.max(fighter.vy, 15);
+        fighter.vx = fighter.facing * 7;
+        if (Math.random() < 0.55) {
+          particles.push({
+            x: fighter.x,
+            y: fighter.y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: -Math.random() * 4,
+            color: Math.random() > 0.5 ? '#ef4444' : '#f97316',
+            size: 5 + Math.random() * 4,
+            alpha: 1,
+            decay: 0.07,
+            type: 'spark',
+          });
+        }
+        // Detonate on landing once
+        if (fighter.isGrounded && (atk.superHitCount ?? 0) === 0) {
+          atk.superHitCount = 1;
+          createFireExplosion(fighter.x, fighter.y, particles, addScreenShake);
+          sound.playFireBurst();
+          const dist = Math.hypot(opponent.x - fighter.x, opponent.y - fighter.y);
+          if (dist < 110 && opponent.invincibleFrames <= 0) {
+            atk.hitLanded = false;
+            checkAttackHit(fighter, opponent, atk, particles, addScreenShake);
+          }
+        }
+      }
+      break;
+    }
+    case 'yeti': {
+      if (atk.frame === atk.startupFrames) {
+        fighter.vy = 16;
+        sound.playFreeze();
+        createIceSpikes(fighter.x, fighter.y + 20, fighter.facing, particles, addScreenShake);
+        addScreenShake(8, 14);
+      }
+      break;
+    }
+    case 'striker': {
+      if (atk.frame <= atk.startupFrames + atk.activeFrames) {
+        fighter.vx = fighter.facing * 28;
+        fighter.vy = 0;
+        // Clamp inside blast zone soft bounds
+        const minX = stage.blastZone.left + 80;
+        const maxX = stage.blastZone.right - 80;
+        if (fighter.x < minX) {
+          fighter.x = minX;
+          fighter.vx = 0;
+        }
+        if (fighter.x > maxX) {
+          fighter.x = maxX;
+          fighter.vx = 0;
+        }
+        if (atk.frame % 3 === 0) {
+          particles.push({
+            x: fighter.x - fighter.facing * 20,
+            y: fighter.y + (Math.random() - 0.5) * 20,
+            vx: -fighter.facing * 6,
+            vy: (Math.random() - 0.5) * 3,
+            color: '#67e8f9',
+            size: 4,
+            alpha: 1,
+            decay: 0.08,
+            type: 'lightning',
+          });
+        }
+      }
+      break;
+    }
+    case 'titan': {
+      if (!atk.hitLanded) {
+        fighter.vx = fighter.facing * 12;
+        fighter.hasSuperArmor = true;
+      } else {
+        fighter.vx *= 0.85;
+      }
+      break;
+    }
+    case 'shinobi': {
+      // Stay glued near backstab angle briefly
+      if (atk.frame < atk.startupFrames + 6) {
+        fighter.x = opponent.x - opponent.facing * 44;
+        fighter.y = opponent.y;
+        fighter.facing = opponent.facing;
+      }
+      break;
+    }
+    case 'monk': {
+      fighter.vx = fighter.facing * (fighter.isGrounded ? 3.5 : 2.5);
+      fighter.facing = (Math.floor(atk.frame / 6) % 2 === 0 ? 1 : -1) as 1 | -1;
+      if (atk.frame % 6 === 0) {
+        createMonkeySpinBurst(fighter.x, fighter.y, fighter.facing, particles);
+      }
+      // Soften own knockback while spinning
+      if (fighter.hitstun > 0) {
+        fighter.vx *= 0.5;
+        fighter.vy *= 0.5;
+      }
+      break;
+    }
+    case 'lotus': {
+      fighter.vx = fighter.facing * 2.2;
+      // Final rising finisher in last third of active window
+      const activeEnd = atk.startupFrames + atk.activeFrames;
+      if (atk.frame > activeEnd - 12) {
+        atk.direction = 'up';
+        fighter.vy = -8;
+      }
+      if (atk.frame % 4 === 0) {
+        createLightningKickSparks(fighter.x + fighter.facing * 20, fighter.y, fighter.facing, particles);
+      }
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -864,24 +1323,36 @@ function checkAttackHit(
 
   const weaponDef = atk.weaponKind ? ITEM_DEFS[atk.weaponKind] : null;
   const isWeapon = !!weaponDef && weaponDef.category === 'melee';
+  const isSuper = atk.type === 'super';
 
-  // Hitbox detection
-  const reach = isWeapon ? weaponDef.reach : atk.type === 'kick' ? 50 : 48;
+  // Hitbox detection (supers get a wider reach)
+  const reach = isSuper
+    ? attacker.stats.id === 'striker'
+      ? 70
+      : attacker.stats.id === 'yeti'
+        ? 95
+        : 62
+    : isWeapon
+      ? weaponDef.reach
+      : atk.type === 'kick'
+        ? 50
+        : 48;
   const hitYOffset = atk.direction === 'up' ? -40 : atk.direction === 'down' ? 40 : 0;
   const hitXOffset = atk.direction === 'up' || atk.direction === 'down' ? 0 : attacker.facing * reach;
 
   const hitbox = {
     x: attacker.x + hitXOffset,
     y: attacker.y + hitYOffset,
-    radius: isWeapon ? weaponDef.hitRadius : 30,
+    radius: isSuper ? 38 : isWeapon ? weaponDef.hitRadius : 30,
   };
 
   const dist = Math.hypot(hitbox.x - defender.x, hitbox.y - defender.y);
 
   if (dist < hitbox.radius + defender.width / 2) {
     atk.hitLanded = true;
+    defender.freezeTimer = 0;
 
-    // Punches, kicks, and weapon swings are blocked; grabs still connect through guard
+    // Punches, kicks, and weapon swings are blocked; grabs/supers still connect through guard
     const isBlockable = atk.type === 'punch' || atk.type === 'kick';
     if (isBlockable && isFacingBlock(defender, attacker.x)) {
       resolveBlockedHit(attacker, defender, particles, addScreenShake);
@@ -889,12 +1360,25 @@ function checkAttackHit(
     }
 
     const isKick = atk.type === 'kick';
-    const baseDamage = isWeapon
-      ? weaponDef.damage
-      : isKick
-        ? attacker.stats.kickDamage
-        : attacker.stats.punchDamage;
+    if (!atk.hitTargets) atk.hitTargets = [];
+    const isFollowUpHit = atk.hitTargets.includes(defender.playerIndex);
+    if (!isFollowUpHit) atk.hitTargets.push(defender.playerIndex);
+    atk.superHitCount = (atk.superHitCount ?? 0) + 1;
+
+    let baseDamage = isSuper
+      ? getSuperHitDamage(attacker.stats.id, atk.superHitCount ?? 1)
+      : isWeapon
+        ? weaponDef.damage
+        : isKick
+          ? attacker.stats.kickDamage
+          : attacker.stats.punchDamage;
+    // Lyla lightning kick follow-ups chip for a fraction of full kick damage
+    if (isFollowUpHit && attacker.stats.id === 'lotus' && isKick) {
+      baseDamage = Math.max(2, Math.ceil(baseDamage * 0.32));
+    }
     defender.damagePercent += baseDamage;
+    gainSuperMeter(attacker, baseDamage * SUPER_METER_GAIN_DEALT);
+    gainSuperMeter(defender, baseDamage * SUPER_METER_GAIN_TAKEN);
 
     const pct = defender.damagePercent;
     const wt = defender.stats.weight;
@@ -902,7 +1386,11 @@ function checkAttackHit(
     let launchVx = 0;
     let launchVy = 0;
 
-    if (atk.direction === 'up') {
+    if (isSuper) {
+      const launch = getSuperLaunch(attacker, defender, atk, pct, wt);
+      launchVx = launch.vx;
+      launchVy = launch.vy;
+    } else if (atk.direction === 'up') {
       launchVx = attacker.facing * knockbackFromPercent(isWeapon ? 2.5 : 2, isWeapon ? 0.06 : 0.05, pct, wt);
       launchVy = -knockbackFromPercent(
         isWeapon ? weaponDef.knockbackBase : isKick ? 11 : 9,
@@ -937,13 +1425,22 @@ function checkAttackHit(
 
     defender.vx = launchVx;
     defender.vy = launchVy;
-    defender.hitstun = Math.floor(16 + pct * 0.2);
+    defender.hitstun = Math.floor((isSuper ? 22 : 16) + pct * (isSuper ? 0.28 : 0.2));
     defender.currentAction = 'hitstun';
 
-    const shakeVal = Math.min(12, Math.floor(4 + pct * 0.06));
+    const shakeVal = Math.min(14, Math.floor((isSuper ? 6 : 4) + pct * 0.06));
     addScreenShake(shakeVal, Math.floor(8 + pct * 0.08));
 
-    if (isWeapon) {
+    if (isSuper) {
+      createHitSparks(defender.x, defender.y, attacker.stats.secondaryColor, particles, 18);
+      createHitText(
+        defender.x,
+        defender.y - 42,
+        attacker.stats.superMove.name.toUpperCase() + '!',
+        attacker.stats.secondaryColor,
+        particles
+      );
+    } else if (isWeapon) {
       createHitSparks(defender.x, defender.y, weaponDef.glowColor, particles, 16);
       createHitText(defender.x, defender.y - 42, weaponDef.name.toUpperCase(), weaponDef.glowColor, particles);
     } else if (isKick) {
@@ -958,7 +1455,13 @@ function checkAttackHit(
       defender.x,
       defender.y - 25,
       `${baseDamage}%`,
-      isWeapon ? weaponDef.color : isKick ? '#ef4444' : '#f59e0b',
+      isSuper
+        ? attacker.stats.color
+        : isWeapon
+          ? weaponDef.color
+          : isKick
+            ? '#ef4444'
+            : '#f59e0b',
       particles
     );
 
@@ -969,7 +1472,7 @@ function checkAttackHit(
     const dId = defender.stats.id;
 
     // 1. Gilded Titan: Super Armor Absorption for Defender
-    if (dId === 'titan' && defender.hasSuperArmor) {
+    if (dId === 'titan' && defender.hasSuperArmor && !isSuper) {
       defender.hitstun = 0;
       defender.vx *= 0.15;
       defender.vy = 0;
@@ -977,6 +1480,9 @@ function checkAttackHit(
       createHitSparks(defender.x, defender.y, '#fbbf24', particles, 8);
     }
 
+    if (isSuper) {
+      applySuperHitEffects(attacker, defender, atk, particles, addScreenShake);
+    } else {
     // 2. Zephyr Drake: Gale Wind Gust
     if (aId === 'zephyr') {
       defender.vx += attacker.facing * 3.2;
@@ -1036,6 +1542,51 @@ function checkAttackHit(
       createEarthquakeTremor(attacker.x, attacker.y, {} as Stage, defender, particles, addScreenShake);
     }
 
+    // 8. Drunken Monk: Tipsy Charge Monkey Spin + stumble
+    if (aId === 'monk') {
+      defender.tipsyTimer = Math.max(defender.tipsyTimer || 0, 120);
+      if (attacker.tipsyCharge && attacker.tipsyCharge >= 100) {
+        attacker.tipsyCharge = 0;
+        defender.damagePercent += 5;
+        defender.vx *= 1.35;
+        defender.vy -= 3.5;
+        defender.hitstun += 10;
+        sound.playMonkeySpin();
+        createMonkeySpinBurst(defender.x, defender.y, attacker.facing, particles);
+        createHitText(defender.x, defender.y - 45, 'MONKEY SPIN!', '#facc15', particles);
+        addScreenShake(6, 12);
+      } else {
+        createHitText(defender.x, defender.y - 45, 'TIPSY!', '#a3e635', particles);
+      }
+    }
+
+    // 9. Lotus Lyla: Lightning Kick Barrage
+    if (aId === 'lotus' && isKick) {
+      attacker.lightningKickFlash = 10;
+      defender.hitstun += isFollowUpHit ? 4 : 6;
+      if (isFollowUpHit) {
+        defender.vx *= 0.55;
+        defender.vy *= 0.7;
+      }
+      sound.playLightningKick();
+      createLightningKickSparks(defender.x, defender.y, attacker.facing, particles);
+      createHitText(
+        defender.x,
+        defender.y - 45,
+        isFollowUpHit ? 'LIGHTNING HIT!' : 'LIGHTNING KICK!',
+        '#60a5fa',
+        particles
+      );
+    }
+
+    // Drunken sway softens knockback when Aaron is well charged
+    if (dId === 'monk' && defender.tipsyCharge && defender.tipsyCharge >= 50) {
+      defender.vx *= 0.62;
+      defender.vy *= 0.7;
+      createHitText(defender.x, defender.y - 58, 'DRUNKEN SWAY!', '#84cc16', particles);
+    }
+    } // end non-super specials
+
     if (tryPercentKo(defender, particles, addScreenShake, attacker)) {
       return;
     }
@@ -1043,6 +1594,168 @@ function checkAttackHit(
     if (defender.hitstun > 0) {
       defender.isGrounded = false;
     }
+  }
+}
+
+function getSuperHitDamage(id: FighterId, hitCount: number): number {
+  switch (id) {
+    case 'zephyr':
+      return hitCount === 1 ? 14 : 6;
+    case 'brawler':
+      return 18;
+    case 'yeti':
+      return 12;
+    case 'striker':
+      return 16;
+    case 'titan':
+      return 20;
+    case 'shinobi':
+      return 22;
+    case 'monk':
+      return hitCount <= 1 ? 5 : 4;
+    case 'lotus':
+      return hitCount <= 1 ? 4 : hitCount >= 8 ? 12 : 3;
+    default:
+      return 12;
+  }
+}
+
+function getSuperLaunch(
+  attacker: Fighter,
+  defender: Fighter,
+  atk: AttackState,
+  pct: number,
+  wt: number
+): { vx: number; vy: number } {
+  const id = attacker.stats.id;
+  switch (id) {
+    case 'zephyr':
+      return {
+        vx: attacker.facing * knockbackFromPercent(12, 0.28, pct, wt),
+        vy: -knockbackFromPercent(10, 0.22, pct, wt),
+      };
+    case 'brawler':
+      return {
+        vx: attacker.facing * knockbackFromPercent(10, 0.24, pct, wt),
+        vy: -knockbackFromPercent(9, 0.2, pct, wt),
+      };
+    case 'yeti':
+      // Lock in place — freeze handles stun
+      return { vx: 0, vy: 0 };
+    case 'striker':
+      return {
+        vx: attacker.facing * knockbackFromPercent(14, 0.3, pct, wt),
+        vy: -knockbackFromPercent(6, 0.14, pct, wt),
+      };
+    case 'titan':
+      return {
+        vx: attacker.facing * knockbackFromPercent(4, 0.08, pct, wt),
+        vy: knockbackFromPercent(18, 0.22, pct, wt),
+      };
+    case 'shinobi':
+      return {
+        vx: attacker.facing * knockbackFromPercent(13, 0.32, pct, wt),
+        vy: -knockbackFromPercent(8, 0.18, pct, wt),
+      };
+    case 'monk':
+      return {
+        vx: attacker.facing * knockbackFromPercent(5, 0.12, pct, wt) * (atk.superHitCount && atk.superHitCount > 4 ? 1.6 : 0.7),
+        vy: -knockbackFromPercent(4, 0.1, pct, wt),
+      };
+    case 'lotus':
+      if (atk.direction === 'up') {
+        return {
+          vx: attacker.facing * knockbackFromPercent(3, 0.08, pct, wt),
+          vy: -knockbackFromPercent(16, 0.3, pct, wt),
+        };
+      }
+      return {
+        vx: attacker.facing * knockbackFromPercent(3, 0.06, pct, wt),
+        vy: -knockbackFromPercent(2, 0.04, pct, wt),
+      };
+    default:
+      return {
+        vx: attacker.facing * knockbackFromPercent(8, 0.2, pct, wt),
+        vy: -knockbackFromPercent(6, 0.14, pct, wt),
+      };
+  }
+}
+
+function applySuperHitEffects(
+  attacker: Fighter,
+  defender: Fighter,
+  atk: AttackState,
+  particles: Particle[],
+  addScreenShake: (intensity: number, frames: number) => void
+) {
+  const id = attacker.stats.id;
+  switch (id) {
+    case 'zephyr':
+      defender.vx += attacker.facing * 5;
+      createWindGust(defender.x, defender.y, attacker.facing, particles);
+      sound.playGlide();
+      break;
+    case 'brawler':
+      defender.burnTimer = 210;
+      createFireExplosion(defender.x, defender.y, particles, addScreenShake);
+      sound.playFireBurst();
+      break;
+    case 'yeti':
+      defender.freezeTimer = 96; // ~1.6s hard freeze
+      defender.frostbiteTimer = 200;
+      defender.hitstun = 0;
+      defender.vx = 0;
+      defender.vy = 0;
+      defender.currentAction = 'hitstun';
+      createIceSpikes(defender.x, defender.y, attacker.facing, particles, addScreenShake);
+      sound.playFreeze();
+      createHitText(defender.x, defender.y - 55, 'GLACIAL LOCK!', '#e0f2fe', particles);
+      addScreenShake(9, 16);
+      break;
+    case 'striker':
+      defender.hitstun += 20;
+      createLightningBurst(defender.x, defender.y, particles);
+      sound.playLightning();
+      createHitText(defender.x, defender.y - 55, 'THUNDER RAIL!', '#67e8f9', particles);
+      break;
+    case 'titan':
+      defender.bouncedOnGround = false;
+      sound.playQuake();
+      createEarthquakeTremor(attacker.x, attacker.y, {} as Stage, defender, particles, addScreenShake);
+      createHitText(defender.x, defender.y - 55, 'TITAN CRUSH!', '#fbbf24', particles);
+      // End charge early after connect
+      if (attacker.attack) {
+        attacker.attack.frame = Math.max(attacker.attack.frame, attacker.attack.totalFrames - 8);
+      }
+      break;
+    case 'shinobi':
+      defender.damagePercent += 8;
+      defender.vx *= 1.55;
+      createShadowPhaseSmoke(defender.x, defender.y, particles);
+      sound.playShadowPhase();
+      createHitText(defender.x, defender.y - 55, 'VOID AMBUSH!', '#ec4899', particles);
+      addScreenShake(8, 14);
+      break;
+    case 'monk':
+      defender.tipsyTimer = Math.max(defender.tipsyTimer || 0, 160);
+      createMonkeySpinBurst(defender.x, defender.y, attacker.facing, particles);
+      sound.playMonkeySpin();
+      if ((atk.superHitCount ?? 0) >= 5) {
+        createHitText(defender.x, defender.y - 55, 'WHIRLWIND!', '#facc15', particles);
+      }
+      break;
+    case 'lotus':
+      attacker.lightningKickFlash = 12;
+      defender.hitstun += atk.direction === 'up' ? 14 : 5;
+      createLightningKickSparks(defender.x, defender.y, attacker.facing, particles);
+      sound.playLightningKick();
+      if (atk.direction === 'up') {
+        createHitText(defender.x, defender.y - 55, 'LOTUS FINISHER!', '#f472b6', particles);
+        addScreenShake(8, 14);
+      }
+      break;
+    default:
+      break;
   }
 }
 
@@ -1301,6 +2014,77 @@ function resolvePlatformCollisions(
   }
 }
 
+/**
+ * Soft body collision between fighters. Prevents nesting / "stuck following"
+ * when players walk into each other. Skipped during grabs, ledge hangs, and respawn.
+ *
+ * Smash-style: only separate on X. Vertical solid collision made one fighter
+ * perch on the other with vy zeroed every frame — they looked stuck on top.
+ */
+export function resolveFighterCollision(a: Fighter, b: Fighter, stage: Stage) {
+  if (a.stocks <= 0 || b.stocks <= 0) return;
+  if (a.respawnTimer > 0 || b.respawnTimer > 0) return;
+  if (a.grab.role !== 'none' || b.grab.role !== 'none') return;
+  if (a.ledgeHang || b.ledgeHang) return;
+
+  // Slightly smaller than full sprite so grabs/attacks still connect at close range
+  const scale = 0.7;
+  const halfW = (a.width * scale + b.width * scale) / 2;
+  const halfH = (a.height * scale + b.height * scale) / 2;
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const overlapX = halfW - Math.abs(dx);
+  const overlapY = halfH - Math.abs(dy);
+
+  if (overlapX <= 0 || overlapY <= 0) return;
+
+  const weightA = a.stats.weight || 1;
+  const weightB = b.stats.weight || 1;
+  const totalWeight = weightA + weightB;
+  const pushA = weightB / totalWeight;
+  const pushB = weightA / totalWeight;
+
+  // Always push apart horizontally. If nearly centered on top of each other
+  // (tiny dx), pick a slide-off side from velocity / facing so they don't nest.
+  let dir = Math.sign(dx);
+  if (dir === 0) {
+    const relVx = a.vx - b.vx;
+    if (Math.abs(relVx) > 0.5) dir = relVx >= 0 ? -1 : 1;
+    else dir = a.facing || 1;
+  }
+
+  // Stacked: deeper X shove so the upper fighter slides off instead of perching
+  const stacked = Math.abs(dy) > a.height * 0.28;
+  const sep = overlapX + (stacked ? 2.5 : 0.5);
+
+  a.x -= dir * sep * pushA;
+  b.x += dir * sep * pushB;
+
+  // Cancel only inward walk velocity when side-by-side — never touch vy, and
+  // don't kill horizontal speed while sliding off a stack (that caused the stick).
+  if (!stacked && a.hitstun === 0 && b.hitstun === 0) {
+    if (dir > 0) {
+      if (a.vx > 0) a.vx = 0;
+      if (b.vx < 0) b.vx = 0;
+    } else {
+      if (a.vx < 0) a.vx = 0;
+      if (b.vx > 0) b.vx = 0;
+    }
+  } else if (stacked && a.hitstun === 0 && b.hitstun === 0) {
+    // Nudge the upper fighter off so gravity can finish separating them
+    const upper = a.y < b.y ? a : b;
+    const lower = a.y < b.y ? b : a;
+    const slideDir = upper.x >= lower.x ? 1 : -1;
+    upper.vx += slideDir * 1.8;
+    if (upper.vy > 0) upper.vy *= 0.85;
+  }
+
+  // Re-snap to platforms so a shove can't bury feet into the stage
+  resolvePlatformCollisions(a, stage, [], () => {});
+  resolvePlatformCollisions(b, stage, [], () => {});
+}
+
 function handlePlatformLanding(
   fighter: Fighter,
   platTop: number,
@@ -1381,6 +2165,11 @@ function eliminateFighter(
   fighter.ledgeHang = null;
   fighter.burnTimer = 0;
   fighter.frostbiteTimer = 0;
+  fighter.tipsyTimer = 0;
+  fighter.lightningKickFlash = 0;
+  fighter.freezeTimer = 0;
+  fighter.superFlash = 0;
+  fighter.superMeter = Math.min(fighter.superMeter ?? 0, SUPER_METER_ON_KO_KEEP);
   fighter.isSprinting = false;
   fighter.sprintStamina = SPRINT_STAMINA_MAX;
   fighter.isGrounded = false;
@@ -1818,5 +2607,71 @@ export function createEarthquakeTremor(
     opponent.currentAction = 'hitstun';
     createHitText(opponent.x, opponent.y - 30, 'TREMOR!', '#f59e0b', particles);
     tryPercentKo(opponent, particles, addScreenShake);
+  }
+}
+
+export function createMonkeySpinBurst(
+  x: number,
+  y: number,
+  facing: number,
+  particles: Particle[]
+) {
+  particles.push({
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    color: '#facc15',
+    size: 30,
+    alpha: 0.95,
+    decay: 0.055,
+    type: 'ring',
+  });
+  for (let i = 0; i < 14; i++) {
+    const angle = (i / 14) * Math.PI * 2;
+    const speed = 5 + Math.random() * 6;
+    particles.push({
+      x: x + Math.cos(angle) * 6,
+      y: y + Math.sin(angle) * 6,
+      vx: Math.cos(angle) * speed + facing * 2,
+      vy: Math.sin(angle) * speed - 1,
+      color: i % 2 === 0 ? '#84cc16' : '#fde047',
+      size: 4 + Math.random() * 4,
+      alpha: 1,
+      decay: 0.04,
+      type: 'spark',
+    });
+  }
+}
+
+export function createLightningKickSparks(
+  x: number,
+  y: number,
+  facing: number,
+  particles: Particle[]
+) {
+  particles.push({
+    x: x + facing * 8,
+    y,
+    vx: facing * 4,
+    vy: 0,
+    color: '#93c5fd',
+    size: 18,
+    alpha: 0.9,
+    decay: 0.08,
+    type: 'ring',
+  });
+  for (let i = 0; i < 10; i++) {
+    particles.push({
+      x: x + facing * (4 + Math.random() * 12),
+      y: y + (Math.random() - 0.5) * 28,
+      vx: facing * (3 + Math.random() * 5),
+      vy: (Math.random() - 0.5) * 4,
+      color: i % 2 === 0 ? '#60a5fa' : '#f9a8d4',
+      size: 3 + Math.random() * 3,
+      alpha: 1,
+      decay: 0.05,
+      type: 'lightning',
+    });
   }
 }

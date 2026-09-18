@@ -1,4 +1,12 @@
-export type FighterId = 'brawler' | 'striker' | 'titan' | 'shinobi' | 'zephyr' | 'yeti';
+export type FighterId =
+  | 'brawler'
+  | 'striker'
+  | 'titan'
+  | 'shinobi'
+  | 'zephyr'
+  | 'yeti'
+  | 'monk'
+  | 'lotus';
 
 export interface FighterStats {
   id: FighterId;
@@ -22,6 +30,11 @@ export interface FighterStats {
     description: string;
     icon?: string;
   };
+  /** Unique finisher — only this fighter can perform it (Special button when meter is full). */
+  superMove: {
+    name: string;
+    description: string;
+  };
   accessories: string[];
 }
 
@@ -34,6 +47,7 @@ export type ActionType =
   | 'crouch'
   | 'punch'
   | 'kick'
+  | 'super'
   | 'block'
   | 'grab'
   | 'grabbed'
@@ -51,6 +65,20 @@ export const PERCENT_KO_THRESHOLD = 150;
 
 /** Sprint stamina pool. Drains while dashing, regenerates while walking/idle. */
 export const SPRINT_STAMINA_MAX = 100;
+
+/** Super meter fills from damage dealt/taken; Special fires the unique finisher at 100. */
+export const SUPER_METER_MAX = 100;
+/** Meter from damage dealt — ~100–120% dealt alone fills the bar (~1 super per stock). */
+export const SUPER_METER_GAIN_DEALT = 0.85;
+/** Comeback meter from damage taken (milder than dealt so aggression stays the main path). */
+export const SUPER_METER_GAIN_TAKEN = 0.4;
+/** Soft floor so very defensive matches still unlock a super (~0.2/sec at 60fps). */
+export const SUPER_METER_PASSIVE_PER_FRAME = 0.2 / 60;
+/** Flat meter on grab pummel (dealt / taken). */
+export const SUPER_METER_PUMMEL_DEALT = 2.5;
+export const SUPER_METER_PUMMEL_TAKEN = 1;
+/** Meter kept after a KO (progress isn't fully wiped). */
+export const SUPER_METER_ON_KO_KEEP = 55;
 
 export type ItemKind = 'blaster' | 'raygun' | 'sword' | 'beam_sword' | 'hammer' | 'bat' | 'bomb';
 export type ItemCategory = 'ranged' | 'melee' | 'throwable';
@@ -97,7 +125,7 @@ export interface ItemWorld {
 }
 
 export interface AttackState {
-  type: 'punch' | 'kick' | 'grab' | 'throw_fwd' | 'throw_back' | 'throw_up' | 'throw_down';
+  type: 'punch' | 'kick' | 'grab' | 'throw_fwd' | 'throw_back' | 'throw_up' | 'throw_down' | 'super';
   frame: number;
   totalFrames: number;
   startupFrames: number;
@@ -106,6 +134,8 @@ export interface AttackState {
   hitTargets?: number[];
   direction?: 'up' | 'down' | 'forward' | 'back' | 'neutral';
   weaponKind?: ItemKind;
+  /** Extra hits already applied this super (lotus / monk multi-hit). */
+  superHitCount?: number;
 }
 
 export interface GrabInfo {
@@ -173,6 +203,15 @@ export interface Fighter {
   shadowPhaseTimer?: number; // intangible dash for Shinobi
   hasSuperArmor?: boolean; // Titan heavy poise
   wingFlapTick?: number;
+  tipsyCharge?: number; // 0 to 100 for Aaron (monk) drunken sway
+  tipsyTimer?: number; // stumble/wobble inflicted by monk
+  lightningKickFlash?: number; // brief VFX after Lyla lightning kick hit
+  /** 0–100 unique super meter (Special / F). */
+  superMeter: number;
+  /** Hard freeze from Yeti Glacial Lock — no movement until it expires. */
+  freezeTimer?: number;
+  /** Brief glow after firing a super. */
+  superFlash?: number;
 
   // Smash-style item / weapon currently in hand
   heldWeapon: HeldWeapon | null;
@@ -260,4 +299,6 @@ export interface InputState {
   grab: boolean;
   block: boolean;
   sprint: boolean;
+  /** Fire unique super when meter is full (P1: F, P2: ;). */
+  special: boolean;
 }

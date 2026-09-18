@@ -80,6 +80,12 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
                   V
                 </kbd>
               </li>
+              <li className="flex items-center justify-between">
+                <span className="text-slate-300 font-semibold text-amber-200">Super Move (full meter)</span>
+                <kbd className="px-3 py-1 bg-amber-500/20 text-amber-200 border border-amber-500/40 rounded font-mono text-xs font-bold">
+                  F
+                </kbd>
+              </li>
             </ul>
           </div>
 
@@ -125,6 +131,21 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
           </div>
         </div>
 
+        {/* Super Moves */}
+        <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-950/50 to-slate-900 border border-amber-500/40 rounded-xl text-xs">
+          <div className="flex items-center gap-2 font-bold text-amber-300 mb-1">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span>Unique Super Moves</span>
+          </div>
+          <p className="text-slate-300 text-[11px] leading-relaxed">
+            Fight to fill the amber Super meter — mostly from damage you deal, plus some from damage taken.
+            Expect roughly one READY per stock. When it reads READY, press{' '}
+            <span className="text-amber-300 font-bold">F</span> (P1) or{' '}
+            <span className="text-amber-300 font-bold">;</span> (P2) to fire your fighter&apos;s unique finisher. Touch
+            devices use the Super pad.
+          </p>
+        </div>
+
         {/* Item Drops */}
         <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-950/50 to-slate-900 border border-amber-500/40 rounded-xl text-xs">
           <div className="flex items-center gap-2 font-bold text-amber-300 mb-1">
@@ -166,7 +187,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
           <div className="mt-4 p-3 bg-sky-950/40 border border-sky-800/60 rounded-xl text-xs flex items-center justify-between">
             <span className="text-sky-200 font-medium">Player 2 Keys:</span>
             <span className="font-mono text-slate-300">
-              Arrows: Move | Enter: Punch | L: Kick | K: Grab | O: Block | RShift: Sprint
+              Arrows: Move | Enter: Punch | L: Kick | K: Grab | O: Block | RShift: Sprint | ;: Super
             </span>
           </div>
         )}
