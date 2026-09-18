@@ -242,7 +242,13 @@ export interface Stage {
   };
   platforms: Platform[];
   spawnPoints: { x: number; y: number }[];
-  theme: 'battlefield' | 'destination' | 'cyber';
+  theme:
+    | 'battlefield'
+    | 'destination'
+    | 'cyber'
+    | 'skyfair'
+    | 'spire'
+    | 'crater';
   bgGradient: [string, string];
 }
 

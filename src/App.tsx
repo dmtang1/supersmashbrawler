@@ -20,7 +20,7 @@ export default function App() {
     cpuLevel: 2, // Default to Level 2 (Easy) as requested for ease of play!
     stocks: 3,
     matchDuration: 120, // 2 minutes
-    stageId: 'battlefield',
+    stageId: 'random',
     p1Fighter: 'brawler',
     p2Fighter: 'striker',
     soundEnabled: true,

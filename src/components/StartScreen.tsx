@@ -2,6 +2,7 @@ import React from 'react';
 import { Swords, Bot, Users, Shield, ArrowRight } from 'lucide-react';
 import { FighterId, GameMode, GameSettings } from '../types';
 import { FIGHTERS } from '../fighters';
+import { RANDOM_STAGE_ID, STAGES } from '../stages';
 import { sound } from '../audio';
 import { FighterThumbnail } from './FighterThumbnail';
 
@@ -229,9 +230,12 @@ export const StartScreen: React.FC<StartScreenProps> = ({
               onChange={(e) => onUpdateSettings({ ...settings, stageId: e.target.value })}
               className="bg-slate-800 border border-slate-700 text-slate-100 text-[10px] sm:text-xs font-bold rounded-lg px-2 py-1 cursor-pointer outline-none"
             >
-              <option value="battlefield">Arena</option>
-              <option value="destination">Final Dest.</option>
-              <option value="cyber">Neon Skyway</option>
+              <option value={RANDOM_STAGE_ID}>Random</option>
+              {Object.values(STAGES).map((stg) => (
+                <option key={stg.id} value={stg.id}>
+                  {stg.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>

@@ -8,7 +8,7 @@ import {
   Stage,
 } from '../types';
 import { FIGHTERS } from '../fighters';
-import { STAGES } from '../stages';
+import { pickStage } from '../stages';
 import { createInitialFighter, resolveFighterCollision, updateFighterPhysics } from '../physics';
 import { calculateCpuInput } from '../ai';
 import {
@@ -55,7 +55,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const keysPressed = useRef<Set<string>>(new Set());
 
   // Game Engine Refs
-  const stageRef = useRef<Stage>(STAGES[settings.stageId] || STAGES.battlefield);
+  const stageRef = useRef<Stage>(pickStage(settings.stageId));
   const p1Ref = useRef<Fighter>(
     createInitialFighter(0, false, FIGHTERS[settings.p1Fighter], stageRef.current.spawnPoints[0], 1)
   );
@@ -95,7 +95,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Initialize or Reset Match
   const resetMatch = useCallback(() => {
-    stageRef.current = STAGES[settings.stageId] || STAGES.battlefield;
+    stageRef.current = pickStage(settings.stageId);
     p1Ref.current = createInitialFighter(
       0,
       false,
@@ -457,7 +457,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       ctx.restore();
 
-      // 4. UI Overlays (Offscreen radar bubbles)
+      // Offscreen radar bubbles (screen space)
       renderOffscreenIndicators(ctx, [p1, p2], stageRef.current, cam, width, height);
 
       animationFrameId = requestAnimationFrame(render);

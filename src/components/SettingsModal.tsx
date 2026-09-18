@@ -2,7 +2,7 @@ import React from 'react';
 import { X, Play, Sliders, Shield, MapPin, Bot, Users } from 'lucide-react';
 import { FighterId, GameSettings } from '../types';
 import { FIGHTERS } from '../fighters';
-import { STAGES } from '../stages';
+import { RANDOM_STAGE_ID, STAGES } from '../stages';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -241,7 +241,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <MapPin className="w-3.5 h-3.5 text-sky-400" />
               Battle Stage
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <button
+                id="stage-random-btn"
+                onClick={() => onUpdateSettings({ ...settings, stageId: RANDOM_STAGE_ID })}
+                className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                  settings.stageId === RANDOM_STAGE_ID
+                    ? 'bg-sky-500/20 border-sky-400 text-sky-200'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="font-bold text-xs text-white truncate">Random</div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate">Surprise stage each match</div>
+              </button>
               {stageList.map((stg) => (
                 <button
                   key={stg.id}

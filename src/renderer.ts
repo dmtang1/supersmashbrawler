@@ -12,11 +12,724 @@ import {
 } from './types';
 import { ITEM_DEFS } from './items';
 
-const STAGE_GRID_COLOR: Record<Stage['theme'], string> = {
-  battlefield: '#38bdf8',
-  destination: '#c084fc',
-  cyber: '#34d399',
+/** Seeded 0–1 noise for stable watercolor washes (not Math.random each frame). */
+function hash2(x: number, y: number): number {
+  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function viewCover(
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number,
+  pad = 320
+) {
+  const zoom = Math.max(camera.zoom, 0.01);
+  const viewW = canvasWidth / zoom;
+  const viewH = canvasHeight / zoom;
+  return {
+    originX: camera.x - viewW / 2 - pad,
+    originY: camera.y - viewH / 2 - pad,
+    coverW: viewW + pad * 2,
+    coverH: viewH + pad * 2,
+  };
+}
+
+type WashBlob = { x: number; y: number; r: number; color: string; a: number };
+
+function fillSkyGradient(
+  ctx: CanvasRenderingContext2D,
+  originX: number,
+  originY: number,
+  coverW: number,
+  coverH: number,
+  stops: Array<[number, string]>
+) {
+  const sky = ctx.createLinearGradient(0, originY, 0, originY + coverH);
+  for (const [t, c] of stops) sky.addColorStop(t, c);
+  ctx.fillStyle = sky;
+  ctx.fillRect(originX, originY, coverW, coverH);
+}
+
+function paintWashes(ctx: CanvasRenderingContext2D, washes: WashBlob[]) {
+  for (const w of washes) {
+    const g = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.r);
+    g.addColorStop(0, w.color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = w.a;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function paintPaperSpeckles(
+  ctx: CanvasRenderingContext2D,
+  originX: number,
+  originY: number,
+  coverW: number,
+  coverH: number,
+  dark: string,
+  light: string
+) {
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  for (let i = 0; i < 140; i++) {
+    const gx = originX + hash2(i, 11) * coverW;
+    const gy = originY + hash2(i, 19) * coverH;
+    const s = 1 + hash2(i, 23) * 2.5;
+    ctx.fillStyle = hash2(i, 29) > 0.5 ? dark : light;
+    ctx.fillRect(gx, gy, s, s);
+  }
+  ctx.restore();
+}
+
+function paintHillBand(
+  ctx: CanvasRenderingContext2D,
+  originX: number,
+  originY: number,
+  coverW: number,
+  coverH: number,
+  baseY: number,
+  amp: number,
+  waves: number,
+  phase: number,
+  seed: number,
+  color: string,
+  alpha: number
+) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(originX, baseY);
+  const steps = 12;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = originX + coverW * t;
+    const y =
+      baseY -
+      40 +
+      Math.sin(t * Math.PI * waves + phase) * amp +
+      hash2(i, seed) * (amp * 0.7);
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(originX + coverW, originY + coverH);
+  ctx.lineTo(originX, originY + coverH);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintWorldVignette(
+  ctx: CanvasRenderingContext2D,
+  camera: CameraState,
+  originX: number,
+  originY: number,
+  coverW: number,
+  coverH: number,
+  color: string
+) {
+  const vig = ctx.createRadialGradient(
+    camera.x,
+    camera.y,
+    Math.min(coverW, coverH) * 0.2,
+    camera.x,
+    camera.y,
+    Math.max(coverW, coverH) * 0.55
+  );
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, color);
+  ctx.fillStyle = vig;
+  ctx.fillRect(originX, originY, coverW, coverH);
+}
+
+/** Amber Colosseum — warm parchment washes + dusty hills. */
+function paintAmberColosseum(
+  ctx: CanvasRenderingContext2D,
+  stage: Stage,
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const { originX, originY, coverW, coverH } = viewCover(camera, canvasWidth, canvasHeight);
+
+  fillSkyGradient(ctx, originX, originY, coverW, coverH, [
+    [0, stage.bgGradient[0]],
+    [0.45, '#d4b8a0'],
+    [0.72, '#b08978'],
+    [1, stage.bgGradient[1]],
+  ]);
+
+  paintWashes(ctx, [
+    { x: 200, y: 120, r: 280, color: '#e8c4a8', a: 0.35 },
+    { x: 1100, y: 80, r: 320, color: '#c9a0b0', a: 0.28 },
+    { x: 700, y: 200, r: 240, color: '#f0dcc8', a: 0.22 },
+    { x: 100, y: 520, r: 360, color: '#8b6b5a', a: 0.3 },
+    { x: 1200, y: 560, r: 340, color: '#6e4f5c', a: 0.28 },
+    { x: 700, y: 640, r: 400, color: '#5c4038', a: 0.25 },
+    { x: 400, y: 40, r: 180, color: '#f5e6d3', a: 0.2 },
+    { x: 900, y: 300, r: 200, color: '#a87870', a: 0.18 },
+  ]);
+
+  paintHillBand(ctx, originX, originY, coverW, coverH, 420, 50, 2.2, 0, 3, '#7a5a4e', 0.35);
+  paintHillBand(ctx, originX, originY, coverW, coverH, 500, 55, 1.6, 1, 7, '#5a3d48', 0.28);
+  paintPaperSpeckles(ctx, originX, originY, coverW, coverH, '#3b2a22', '#f3e8d8');
+  paintWorldVignette(ctx, camera, originX, originY, coverW, coverH, 'rgba(40, 24, 20, 0.28)');
+}
+
+/** Moonlit Tide Bridge — giant moon, indigo sky, silver sea. */
+function paintMoonlitTide(
+  ctx: CanvasRenderingContext2D,
+  stage: Stage,
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const { originX, originY, coverW, coverH } = viewCover(camera, canvasWidth, canvasHeight);
+
+  fillSkyGradient(ctx, originX, originY, coverW, coverH, [
+    [0, '#243556'],
+    [0.35, stage.bgGradient[0]],
+    [0.7, '#152033'],
+    [1, stage.bgGradient[1]],
+  ]);
+
+  // Soft night color blooms
+  paintWashes(ctx, [
+    { x: 700, y: 80, r: 420, color: '#3a4f7a', a: 0.4 },
+    { x: 200, y: 180, r: 260, color: '#2a3a5c', a: 0.28 },
+    { x: 1200, y: 160, r: 280, color: '#4a3a68', a: 0.22 },
+    { x: 700, y: 620, r: 480, color: '#0a1424', a: 0.45 },
+    { x: 100, y: 560, r: 300, color: '#1a3048', a: 0.25 },
+    { x: 1300, y: 580, r: 320, color: '#162838', a: 0.25 },
+  ]);
+
+  // Giant watercolor moon
+  const moonX = 980;
+  const moonY = 160;
+  const moonR = 110;
+  const moonGlow = ctx.createRadialGradient(moonX, moonY, moonR * 0.4, moonX, moonY, moonR * 2.2);
+  moonGlow.addColorStop(0, 'rgba(230, 236, 255, 0.35)');
+  moonGlow.addColorStop(1, 'rgba(230, 236, 255, 0)');
+  ctx.fillStyle = moonGlow;
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR * 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#e8eef8';
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(180, 190, 210, 0.35)';
+  ctx.beginPath();
+  ctx.arc(moonX - 28, moonY + 10, 22, 0, Math.PI * 2);
+  ctx.arc(moonX + 18, moonY - 20, 14, 0, Math.PI * 2);
+  ctx.arc(moonX + 35, moonY + 30, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#12161f';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Stars
+  ctx.save();
+  for (let i = 0; i < 55; i++) {
+    const sx = 80 + hash2(i, 2) * 1240;
+    const sy = 40 + hash2(i, 5) * 320;
+    const sr = 0.8 + hash2(i, 9) * 1.8;
+    ctx.globalAlpha = 0.35 + hash2(i, 13) * 0.55;
+    ctx.fillStyle = '#eef2ff';
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Distant sea horizon + soft wave bands
+  ctx.save();
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle = '#1a2e44';
+  ctx.beginPath();
+  ctx.moveTo(originX, 480);
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16;
+    const x = originX + coverW * t;
+    const y = 470 + Math.sin(t * Math.PI * 3 + 0.4) * 8;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(originX + coverW, originY + coverH);
+  ctx.lineTo(originX, originY + coverH);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = '#8eb0c8';
+  ctx.lineWidth = 2;
+  for (let row = 0; row < 5; row++) {
+    const y = 520 + row * 28;
+    ctx.beginPath();
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const x = originX + coverW * t;
+      const yy = y + Math.sin(t * Math.PI * (2.5 + row * 0.4) + row) * (6 + row);
+      if (i === 0) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Moon reflection smear on water
+  const refl = ctx.createLinearGradient(moonX, 500, moonX, 720);
+  refl.addColorStop(0, 'rgba(210, 220, 240, 0.22)');
+  refl.addColorStop(1, 'rgba(210, 220, 240, 0)');
+  ctx.fillStyle = refl;
+  ctx.beginPath();
+  ctx.moveTo(moonX - 40, 500);
+  ctx.lineTo(moonX + 40, 500);
+  ctx.lineTo(moonX + 18, 720);
+  ctx.lineTo(moonX - 18, 720);
+  ctx.closePath();
+  ctx.fill();
+
+  paintPaperSpeckles(ctx, originX, originY, coverW, coverH, '#0a1018', '#d8e0f0');
+  paintWorldVignette(ctx, camera, originX, originY, coverW, coverH, 'rgba(8, 12, 24, 0.38)');
+}
+
+/** Jade Hot Springs — misty bamboo grove over tea-green pools. */
+function paintJadeHotSprings(
+  ctx: CanvasRenderingContext2D,
+  stage: Stage,
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const { originX, originY, coverW, coverH } = viewCover(camera, canvasWidth, canvasHeight);
+
+  fillSkyGradient(ctx, originX, originY, coverW, coverH, [
+    [0, '#d8e6d4'],
+    [0.4, stage.bgGradient[0]],
+    [0.7, '#7fa08a'],
+    [1, stage.bgGradient[1]],
+  ]);
+
+  paintWashes(ctx, [
+    { x: 300, y: 100, r: 300, color: '#e8f0e4', a: 0.35 },
+    { x: 1000, y: 80, r: 280, color: '#b8d0bc', a: 0.3 },
+    { x: 700, y: 220, r: 260, color: '#9cbc9e', a: 0.22 },
+    { x: 150, y: 560, r: 340, color: '#3d5c48', a: 0.32 },
+    { x: 1200, y: 540, r: 360, color: '#2a4538', a: 0.3 },
+    { x: 700, y: 620, r: 400, color: '#1e3328', a: 0.28 },
+    { x: 500, y: 480, r: 180, color: '#a8c8b0', a: 0.2 },
+  ]);
+
+  // Soft steam plumes rising from pools
+  paintWashes(ctx, [
+    { x: 280, y: 430, r: 90, color: '#f0f5f0', a: 0.28 },
+    { x: 700, y: 450, r: 110, color: '#e8f0ea', a: 0.24 },
+    { x: 1120, y: 430, r: 95, color: '#f0f5f0', a: 0.26 },
+    { x: 500, y: 380, r: 70, color: '#ffffff', a: 0.12 },
+    { x: 900, y: 390, r: 75, color: '#ffffff', a: 0.12 },
+  ]);
+
+  // Bamboo stalks (background silhouettes)
+  ctx.save();
+  for (let i = 0; i < 18; i++) {
+    const bx = 40 + i * 78 + hash2(i, 1) * 30;
+    const top = 80 + hash2(i, 4) * 120;
+    const bot = 520 + hash2(i, 8) * 40;
+    ctx.globalAlpha = 0.18 + hash2(i, 6) * 0.16;
+    ctx.strokeStyle = '#1e3328';
+    ctx.lineWidth = 6 + hash2(i, 10) * 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(bx, bot);
+    ctx.quadraticCurveTo(bx + (hash2(i, 12) - 0.5) * 24, (top + bot) / 2, bx + 4, top);
+    ctx.stroke();
+
+    // Segment rings
+    ctx.lineWidth = 2;
+    ctx.globalAlpha *= 0.7;
+    for (let s = 0; s < 4; s++) {
+      const sy = top + ((bot - top) * (s + 1)) / 5;
+      ctx.beginPath();
+      ctx.moveTo(bx - 5, sy);
+      ctx.lineTo(bx + 7, sy);
+      ctx.stroke();
+    }
+
+    // Leaf flick
+    if (hash2(i, 15) > 0.4) {
+      ctx.beginPath();
+      ctx.moveTo(bx + 2, top + 30);
+      ctx.quadraticCurveTo(bx + 28, top + 10, bx + 40, top + 22);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Far ridge of mossy hills
+  paintHillBand(ctx, originX, originY, coverW, coverH, 440, 45, 2.4, 0.5, 4, '#4a6b55', 0.32);
+  paintHillBand(ctx, originX, originY, coverW, coverH, 520, 50, 1.8, 1.2, 9, '#2f4a3c', 0.28);
+
+  // Pool ripples under the fight area
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  ctx.strokeStyle = '#b8d8c4';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i++) {
+    const cx = 350 + i * 220;
+    const cy = 560 + (i % 2) * 16;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 70 + i * 8, 14, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  paintPaperSpeckles(ctx, originX, originY, coverW, coverH, '#1e3328', '#e8f0e4');
+  paintWorldVignette(ctx, camera, originX, originY, coverW, coverH, 'rgba(24, 40, 30, 0.3)');
+}
+
+/** Lantern Skyfair — dusk market, hanging lanterns, warm night sky. */
+function paintLanternSkyfair(
+  ctx: CanvasRenderingContext2D,
+  stage: Stage,
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const { originX, originY, coverW, coverH } = viewCover(camera, canvasWidth, canvasHeight);
+
+  fillSkyGradient(ctx, originX, originY, coverW, coverH, [
+    [0, '#1e1430'],
+    [0.35, stage.bgGradient[0]],
+    [0.65, '#5a2840'],
+    [1, stage.bgGradient[1]],
+  ]);
+
+  paintWashes(ctx, [
+    { x: 700, y: 60, r: 400, color: '#6a3a58', a: 0.35 },
+    { x: 200, y: 140, r: 260, color: '#3a2048', a: 0.3 },
+    { x: 1200, y: 120, r: 280, color: '#8a4050', a: 0.25 },
+    { x: 700, y: 620, r: 420, color: '#2a1018', a: 0.4 },
+    { x: 400, y: 300, r: 180, color: '#c07040', a: 0.15 },
+  ]);
+
+  // Distant rooftop silhouettes
+  paintHillBand(ctx, originX, originY, coverW, coverH, 460, 35, 3.2, 0.2, 5, '#3a2038', 0.4);
+  paintHillBand(ctx, originX, originY, coverW, coverH, 520, 28, 2.4, 1, 8, '#241428', 0.35);
+
+  // Hanging lanterns
+  ctx.save();
+  for (let i = 0; i < 12; i++) {
+    const lx = 120 + i * 110 + hash2(i, 2) * 40;
+    const ly = 90 + hash2(i, 4) * 100;
+    const hang = 40 + hash2(i, 6) * 50;
+
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = '#1a120e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly - 20);
+    ctx.lineTo(lx, ly + hang);
+    ctx.stroke();
+
+    const glow = ctx.createRadialGradient(lx, ly + hang + 12, 2, lx, ly + hang + 12, 36);
+    glow.addColorStop(0, 'rgba(255, 180, 80, 0.55)');
+    glow.addColorStop(1, 'rgba(255, 120, 40, 0)');
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(lx, ly + hang + 12, 36, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = i % 3 === 0 ? '#e85a4a' : i % 3 === 1 ? '#f0a040' : '#e8c050';
+    ctx.beginPath();
+    ctx.roundRect(lx - 8, ly + hang, 16, 22, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#1a120e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  paintPaperSpeckles(ctx, originX, originY, coverW, coverH, '#1a1018', '#f0d8b0');
+  paintWorldVignette(ctx, camera, originX, originY, coverW, coverH, 'rgba(24, 10, 20, 0.35)');
+}
+
+/** Ivory Spire Hall — soft marble washes, stained-glass light shafts. */
+function paintIvorySpire(
+  ctx: CanvasRenderingContext2D,
+  stage: Stage,
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const { originX, originY, coverW, coverH } = viewCover(camera, canvasWidth, canvasHeight);
+
+  fillSkyGradient(ctx, originX, originY, coverW, coverH, [
+    [0, '#f2ebe0'],
+    [0.4, stage.bgGradient[0]],
+    [0.75, '#9a88a8'],
+    [1, stage.bgGradient[1]],
+  ]);
+
+  paintWashes(ctx, [
+    { x: 700, y: 80, r: 360, color: '#fff8ee', a: 0.4 },
+    { x: 200, y: 160, r: 260, color: '#d4c4e0', a: 0.28 },
+    { x: 1200, y: 140, r: 280, color: '#c8b0d0', a: 0.26 },
+    { x: 700, y: 600, r: 400, color: '#4a3a58', a: 0.3 },
+    { x: 100, y: 500, r: 240, color: '#6a5a78', a: 0.22 },
+    { x: 1300, y: 520, r: 250, color: '#5a4a68', a: 0.22 },
+  ]);
+
+  // Soft cathedral light shafts
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = '#fff6e0';
+  for (let i = 0; i < 5; i++) {
+    const x = 250 + i * 200;
+    ctx.beginPath();
+    ctx.moveTo(x, originY);
+    ctx.lineTo(x + 50, originY);
+    ctx.lineTo(x + 110, 520);
+    ctx.lineTo(x - 40, 520);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Distant column silhouettes
+  ctx.save();
+  for (let i = 0; i < 8; i++) {
+    const cx = 100 + i * 160;
+    ctx.globalAlpha = 0.14 + hash2(i, 3) * 0.1;
+    ctx.fillStyle = '#3a3048';
+    ctx.fillRect(cx, 200 + hash2(i, 5) * 80, 28 + hash2(i, 7) * 16, 400);
+    // Capital
+    ctx.fillRect(cx - 8, 200 + hash2(i, 5) * 80, 44 + hash2(i, 7) * 16, 18);
+  }
+  ctx.restore();
+
+  paintHillBand(ctx, originX, originY, coverW, coverH, 540, 20, 1.5, 0, 2, '#4a3c58', 0.25);
+  paintPaperSpeckles(ctx, originX, originY, coverW, coverH, '#2a2030', '#f8f0e4');
+  paintWorldVignette(ctx, camera, originX, originY, coverW, coverH, 'rgba(40, 30, 50, 0.28)');
+}
+
+/** Ember Ascent — volcanic crater, ash washes, glowing vents. */
+function paintEmberAscent(
+  ctx: CanvasRenderingContext2D,
+  stage: Stage,
+  camera: CameraState,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const { originX, originY, coverW, coverH } = viewCover(camera, canvasWidth, canvasHeight);
+
+  fillSkyGradient(ctx, originX, originY, coverW, coverH, [
+    [0, '#f5c8a0'],
+    [0.35, stage.bgGradient[0]],
+    [0.65, '#a04830'],
+    [1, stage.bgGradient[1]],
+  ]);
+
+  paintWashes(ctx, [
+    { x: 700, y: 40, r: 380, color: '#ffe0b0', a: 0.35 },
+    { x: 200, y: 180, r: 260, color: '#e09060', a: 0.28 },
+    { x: 1200, y: 160, r: 280, color: '#c05040', a: 0.25 },
+    { x: 700, y: 640, r: 440, color: '#2a1010', a: 0.45 },
+    { x: 400, y: 520, r: 220, color: '#801818', a: 0.3 },
+    { x: 1000, y: 540, r: 240, color: '#901010', a: 0.28 },
+  ]);
+
+  // Crater bowl rim
+  paintHillBand(ctx, originX, originY, coverW, coverH, 400, 60, 1.8, 0.3, 4, '#6a3828', 0.4);
+  paintHillBand(ctx, originX, originY, coverW, coverH, 480, 50, 2.2, 1.1, 6, '#4a2018', 0.35);
+
+  // Magma glow in the bowl
+  const magma = ctx.createRadialGradient(700, 620, 20, 700, 620, 220);
+  magma.addColorStop(0, 'rgba(255, 160, 40, 0.45)');
+  magma.addColorStop(0.5, 'rgba(220, 60, 20, 0.25)');
+  magma.addColorStop(1, 'rgba(120, 20, 10, 0)');
+  ctx.fillStyle = magma;
+  ctx.beginPath();
+  ctx.arc(700, 620, 220, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ash motes / embers
+  ctx.save();
+  for (let i = 0; i < 40; i++) {
+    const ex = 200 + hash2(i, 11) * 1000;
+    const ey = 80 + hash2(i, 13) * 500;
+    ctx.globalAlpha = 0.25 + hash2(i, 17) * 0.4;
+    ctx.fillStyle = hash2(i, 19) > 0.5 ? '#ff9040' : '#3a2018';
+    ctx.beginPath();
+    ctx.arc(ex, ey, 1 + hash2(i, 21) * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  paintPaperSpeckles(ctx, originX, originY, coverW, coverH, '#2a100c', '#f0d0a0');
+  paintWorldVignette(ctx, camera, originX, originY, coverW, coverH, 'rgba(40, 12, 8, 0.32)');
+}
+
+type PlatformStyle = {
+  underside: [string, string, string];
+  grain: string;
+  rail: string;
+  emblem: string;
 };
+
+const PLATFORM_STYLE: Record<Stage['theme'], PlatformStyle> = {
+  battlefield: {
+    underside: ['#6b4f3a', '#4a3428', '#2c1c16'],
+    grain: 'rgba(60, 40, 28, 0.22)',
+    rail: '#3d2a1c',
+    emblem: 'rgba(26, 18, 14, 0.35)',
+  },
+  destination: {
+    underside: ['#5a6474', '#3a4250', '#1c222c'],
+    grain: 'rgba(30, 36, 48, 0.2)',
+    rail: '#2a3140',
+    emblem: 'rgba(18, 22, 31, 0.4)',
+  },
+  cyber: {
+    underside: ['#5c4634', '#3d2e22', '#221810'],
+    grain: 'rgba(40, 28, 18, 0.25)',
+    rail: '#3a2818',
+    emblem: 'rgba(26, 20, 14, 0.35)',
+  },
+  skyfair: {
+    underside: ['#7a5538', '#523828', '#2a1a10'],
+    grain: 'rgba(70, 40, 20, 0.22)',
+    rail: '#4a3018',
+    emblem: 'rgba(26, 18, 14, 0.4)',
+  },
+  spire: {
+    underside: ['#8a8490', '#5a5460', '#2e2a34'],
+    grain: 'rgba(40, 36, 48, 0.18)',
+    rail: '#3a3440',
+    emblem: 'rgba(30, 24, 36, 0.4)',
+  },
+  crater: {
+    underside: ['#6a3828', '#4a2018', '#2a100c'],
+    grain: 'rgba(80, 30, 16, 0.25)',
+    rail: '#4a2010',
+    emblem: 'rgba(26, 16, 12, 0.4)',
+  },
+};
+
+function drawInkedSolidPlatform(
+  ctx: CanvasRenderingContext2D,
+  plat: Stage['platforms'][0],
+  theme: Stage['theme']
+) {
+  const style = PLATFORM_STYLE[theme];
+  const undersideHeight = 120;
+  const baseGrad = ctx.createLinearGradient(0, plat.y, 0, plat.y + undersideHeight);
+  baseGrad.addColorStop(0, style.underside[0]);
+  baseGrad.addColorStop(0.55, style.underside[1]);
+  baseGrad.addColorStop(1, style.underside[2]);
+  ctx.fillStyle = baseGrad;
+
+  ctx.beginPath();
+  ctx.moveTo(plat.x, plat.y);
+  ctx.lineTo(plat.x + plat.width, plat.y);
+  ctx.lineTo(plat.x + plat.width - 90, plat.y + undersideHeight);
+  ctx.lineTo(plat.x + 90, plat.y + undersideHeight);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = plat.borderColor || '#1a120e';
+  ctx.lineWidth = 3.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  ctx.fillStyle = plat.color || '#c4a882';
+  ctx.beginPath();
+  ctx.roundRect(plat.x, plat.y, plat.width, plat.height, [8, 8, 3, 3]);
+  ctx.fill();
+  ctx.strokeStyle = plat.borderColor || '#1a120e';
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+
+  ctx.save();
+  ctx.strokeStyle = style.grain;
+  ctx.lineWidth = 1.2;
+  for (let i = 1; i <= 4; i++) {
+    const y = plat.y + (plat.height * i) / 5;
+    ctx.beginPath();
+    ctx.moveTo(plat.x + 16, y);
+    ctx.lineTo(plat.x + plat.width - 16, y + (i % 2 === 0 ? 1.5 : -1));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = plat.borderColor || '#1a120e';
+  ctx.beginPath();
+  ctx.arc(plat.x + 2, plat.y + 2, 3.5, 0, Math.PI * 2);
+  ctx.arc(plat.x + plat.width - 2, plat.y + 2, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = style.emblem;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const midX = plat.x + plat.width / 2;
+  if (theme === 'destination') {
+    ctx.arc(midX, plat.y + 26, 14, 0.4, Math.PI * 1.6);
+  } else if (theme === 'cyber') {
+    ctx.arc(midX - 6, plat.y + 26, 8, 0, Math.PI * 2);
+    ctx.arc(midX + 8, plat.y + 22, 6, 0, Math.PI * 2);
+  } else if (theme === 'skyfair') {
+    // Lantern diamond
+    ctx.moveTo(midX, plat.y + 14);
+    ctx.lineTo(midX + 10, plat.y + 26);
+    ctx.lineTo(midX, plat.y + 38);
+    ctx.lineTo(midX - 10, plat.y + 26);
+    ctx.closePath();
+  } else if (theme === 'spire') {
+    // Spire arch
+    ctx.moveTo(midX - 12, plat.y + 36);
+    ctx.lineTo(midX - 12, plat.y + 24);
+    ctx.quadraticCurveTo(midX, plat.y + 10, midX + 12, plat.y + 24);
+    ctx.lineTo(midX + 12, plat.y + 36);
+  } else if (theme === 'crater') {
+    // Ember triangle
+    ctx.moveTo(midX, plat.y + 14);
+    ctx.lineTo(midX + 12, plat.y + 36);
+    ctx.lineTo(midX - 12, plat.y + 36);
+    ctx.closePath();
+  } else {
+    ctx.arc(midX, plat.y + 28, 18, 0, Math.PI * 2);
+  }
+  ctx.stroke();
+}
+
+function drawInkedSoftPlatform(
+  ctx: CanvasRenderingContext2D,
+  plat: Stage['platforms'][0],
+  theme: Stage['theme']
+) {
+  const style = PLATFORM_STYLE[theme];
+  ctx.fillStyle = plat.color || '#d2b48c';
+  ctx.beginPath();
+  ctx.roundRect(plat.x, plat.y, plat.width, plat.height, 5);
+  ctx.fill();
+  ctx.strokeStyle = plat.borderColor || '#1a120e';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.strokeStyle = style.rail;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(plat.x + 4, plat.y + 2);
+  ctx.lineTo(plat.x + plat.width - 4, plat.y + 2);
+  ctx.stroke();
+}
 
 export function renderStage(
   ctx: CanvasRenderingContext2D,
@@ -25,111 +738,34 @@ export function renderStage(
   canvasWidth: number,
   canvasHeight: number
 ) {
-  // Cover the entire camera view (plus padding) so zoom / blast-zone
-  // movement never reveals the black canvas around the pattern.
-  const gridSize = 160;
-  const pad = gridSize * 2;
-  const zoom = Math.max(camera.zoom, 0.01);
-  const viewW = canvasWidth / zoom;
-  const viewH = canvasHeight / zoom;
-  const originX = Math.floor((camera.x - viewW / 2 - pad) / gridSize) * gridSize;
-  const originY = Math.floor((camera.y - viewH / 2 - pad) / gridSize) * gridSize;
-  const coverW = viewW + pad * 2 + gridSize;
-  const coverH = viewH + pad * 2 + gridSize;
-
-  const grad = ctx.createLinearGradient(0, originY, 0, originY + coverH);
-  grad.addColorStop(0, stage.bgGradient[0]);
-  grad.addColorStop(1, stage.bgGradient[1]);
-  ctx.fillStyle = grad;
-  ctx.fillRect(originX, originY, coverW, coverH);
-
-  ctx.save();
-  ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = STAGE_GRID_COLOR[stage.theme];
-  ctx.lineWidth = 1.5;
-
-  const endX = originX + coverW;
-  const endY = originY + coverH;
-  for (let x = originX; x <= endX; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x, originY);
-    ctx.lineTo(x, endY);
-    ctx.stroke();
+  switch (stage.theme) {
+    case 'destination':
+      paintMoonlitTide(ctx, stage, camera, canvasWidth, canvasHeight);
+      break;
+    case 'cyber':
+      paintJadeHotSprings(ctx, stage, camera, canvasWidth, canvasHeight);
+      break;
+    case 'skyfair':
+      paintLanternSkyfair(ctx, stage, camera, canvasWidth, canvasHeight);
+      break;
+    case 'spire':
+      paintIvorySpire(ctx, stage, camera, canvasWidth, canvasHeight);
+      break;
+    case 'crater':
+      paintEmberAscent(ctx, stage, camera, canvasWidth, canvasHeight);
+      break;
+    default:
+      paintAmberColosseum(ctx, stage, camera, canvasWidth, canvasHeight);
+      break;
   }
-  for (let y = originY; y <= endY; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(originX, y);
-    ctx.lineTo(endX, y);
-    ctx.stroke();
-  }
-  ctx.restore();
 
-  // Platforms
   for (const plat of stage.platforms) {
     ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
 
-    if (plat.isDropThrough) {
-      // Soft / Pass-through floating platform
-      ctx.fillStyle = plat.color || '#334155';
-      ctx.beginPath();
-      ctx.roundRect(plat.x, plat.y, plat.width, plat.height, 4);
-      ctx.fill();
-
-      // Top glowing energy rail
-      ctx.strokeStyle = plat.borderColor || '#38bdf8';
-      ctx.lineWidth = 3;
-      ctx.shadowColor = plat.borderColor || '#38bdf8';
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.moveTo(plat.x + 2, plat.y + 1);
-      ctx.lineTo(plat.x + plat.width - 2, plat.y + 1);
-      ctx.stroke();
-    } else {
-      // Main Solid Stage Island
-      // Floating underside bevel / rock base
-      const undersideHeight = 120;
-      const baseGrad = ctx.createLinearGradient(0, plat.y, 0, plat.y + undersideHeight);
-      baseGrad.addColorStop(0, '#0f172a');
-      baseGrad.addColorStop(1, '#020617');
-      ctx.fillStyle = baseGrad;
-
-      ctx.beginPath();
-      ctx.moveTo(plat.x, plat.y);
-      ctx.lineTo(plat.x + plat.width, plat.y);
-      ctx.lineTo(plat.x + plat.width - 90, plat.y + undersideHeight);
-      ctx.lineTo(plat.x + 90, plat.y + undersideHeight);
-      ctx.closePath();
-      ctx.fill();
-
-      // Main stage top slab
-      ctx.fillStyle = plat.color || '#1e293b';
-      ctx.beginPath();
-      ctx.roundRect(plat.x, plat.y, plat.width, plat.height, [6, 6, 2, 2]);
-      ctx.fill();
-
-      // Stage edge neon glow borders
-      ctx.strokeStyle = plat.borderColor || '#38bdf8';
-      ctx.lineWidth = 3;
-      ctx.shadowColor = plat.borderColor || '#38bdf8';
-      ctx.shadowBlur = 12;
-      ctx.stroke();
-
-      // Ledge Snap Sweetspot Anchors (Glowing corner pips at left & right edges)
-      ctx.fillStyle = plat.borderColor || '#38bdf8';
-      ctx.shadowColor = plat.borderColor || '#38bdf8';
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.arc(plat.x + 1, plat.y + 1, 4.5, 0, Math.PI * 2);
-      ctx.arc(plat.x + plat.width - 1, plat.y + 1, 4.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Stage center decorative emblem
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
-      ctx.beginPath();
-      ctx.arc(plat.x + plat.width / 2, plat.y + 28, 22, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    if (plat.isDropThrough) drawInkedSoftPlatform(ctx, plat, stage.theme);
+    else drawInkedSolidPlatform(ctx, plat, stage.theme);
 
     ctx.restore();
   }
@@ -164,8 +800,13 @@ export function renderFighter(
     ctx.save();
     ctx.globalAlpha = 0.5;
     drawFighterModel(ctx, fighter.x, fighter.y, fighter, animTick, false);
-    // Glowing invincibility shield
-    ctx.strokeStyle = '#60a5fa';
+    // Inked invincibility ring (no neon glow)
+    ctx.strokeStyle = '#1a120e';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(fighter.x, fighter.y, fighter.height * 0.65, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#f0e0c8';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(fighter.x, fighter.y, fighter.height * 0.65, 0, Math.PI * 2);
@@ -294,7 +935,7 @@ export function renderFighterPortrait(
   const layout = PORTRAIT_LAYOUT[stats.id] || PORTRAIT_LAYOUT.brawler;
   const scale = Math.min(width / layout.worldW, height / layout.worldH);
 
-  // Soft color wash so the silhouette pops on dark UI
+  // Soft parchment wash behind the silhouette
   const wash = ctx.createRadialGradient(
     width * 0.5,
     height * 0.55,
@@ -303,8 +944,8 @@ export function renderFighterPortrait(
     height * 0.5,
     Math.max(width, height) * 0.55
   );
-  wash.addColorStop(0, `${stats.color}33`);
-  wash.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  wash.addColorStop(0, `${stats.color}44`);
+  wash.addColorStop(1, 'rgba(232, 213, 196, 0)');
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, width, height);
 
@@ -325,12 +966,41 @@ function drawFighterModel(
   animTick: number,
   isTrail: boolean
 ) {
+  const INK = '#1a120e';
+
+  /** Rubber-hose limb: thick ink understroke + flat color. */
+  const hose = (color: string, width: number, path: () => void) => {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = width + 3.5;
+    path();
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    path();
+    ctx.stroke();
+  };
+
+  /** Flat cel shape with thick ink outline. */
+  const cel = (fill: string, path: () => void, line = 2.5) => {
+    path();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = line;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+
   ctx.save();
   ctx.translate(x, y);
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
 
   // Hitstun tumble rotation
   if (fighter.hitstun > 0) {
-    const tumbleAngle = (fighter.vx * 0.05) + Math.sin(animTick * 0.3) * 0.2;
+    const tumbleAngle = fighter.vx * 0.05 + Math.sin(animTick * 0.3) * 0.2;
     ctx.rotate(tumbleAngle);
   }
 
@@ -342,310 +1012,319 @@ function drawFighterModel(
   const isHit = fighter.hitstun > 0;
   const isSprinting = fighter.isSprinting;
 
-  // Base Colors
-  const mainColor = isHit ? '#ffffff' : stats.color;
-  const secColor = isHit ? '#fca5a5' : stats.secondaryColor;
+  // Flat cel colors (flash white on hit)
+  const mainColor = isHit ? '#f5efe6' : stats.color;
+  const secColor = isHit ? '#e8a090' : stats.secondaryColor;
 
   // Shadow Phase Transparency for Shinobi
   if (fighter.shadowPhaseTimer && fighter.shadowPhaseTimer > 0) {
     ctx.globalAlpha = 0.45;
   }
 
-  // 1. Shadow underneath
+  // Ground blob shadow (ink wash, not soft digital blur)
   if (!isTrail && fighter.isGrounded) {
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillStyle = 'rgba(26, 18, 14, 0.28)';
     ctx.beginPath();
     ctx.ellipse(0, fighter.height / 2 + 2, 18, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  // Poses and limb angles
   const walkCycle = Math.sin(animTick * (isSprinting ? 0.45 : 0.25));
   const bodyY = isCrouching ? 10 : 0;
-  const bodyLean = isSprinting ? 0.25 : (fighter.currentAction === 'walk' ? 0.1 : 0);
+  const bodyLean = isSprinting ? 0.25 : fighter.currentAction === 'walk' ? 0.1 : 0;
 
   ctx.rotate(bodyLean);
 
-  // 1.5 Back Accessories (Wings, Ice Crystals, Jet Thruster, Scarf, Pauldrons)
   drawFighterAccessoriesBack(ctx, fighter, bodyY, animTick, isTrail);
 
-  // 2. Legs
-  ctx.strokeStyle = secColor;
-  ctx.lineWidth = 6;
-  ctx.lineCap = 'round';
-
+  // --- Legs (rubber hose) ---
   const legYStart = bodyY + 12;
+  const strokeLegs = (draw: () => void) => hose(secColor, 7, draw);
+
   if (fighter.currentAction === 'super') {
-    // Dramatic finisher silhouette — wide stance / spinning kick
     const spin = Math.sin(animTick * 0.55);
-    ctx.beginPath();
-    ctx.moveTo(-6, legYStart);
-    ctx.lineTo(-18 - spin * 8, legYStart + 10);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(6, legYStart);
-    ctx.lineTo(22 + spin * 10, legYStart - 6);
-    ctx.stroke();
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(-6, legYStart);
+      ctx.lineTo(-18 - spin * 8, legYStart + 10);
+    });
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(6, legYStart);
+      ctx.lineTo(22 + spin * 10, legYStart - 6);
+    });
   } else if (fighter.currentAction === 'kick') {
-    // Dynamic kicking pose
     const kickDir = fighter.attack?.direction;
     if (kickDir === 'down') {
-      // Stomp down
-      ctx.beginPath();
-      ctx.moveTo(-6, legYStart);
-      ctx.lineTo(-4, legYStart + 24);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(6, legYStart);
-      ctx.lineTo(10, legYStart + 30);
-      ctx.stroke();
+      strokeLegs(() => {
+        ctx.beginPath();
+        ctx.moveTo(-6, legYStart);
+        ctx.lineTo(-4, legYStart + 24);
+      });
+      strokeLegs(() => {
+        ctx.beginPath();
+        ctx.moveTo(6, legYStart);
+        ctx.lineTo(10, legYStart + 30);
+      });
     } else if (kickDir === 'up') {
-      // Flip kick straight up
-      ctx.beginPath();
-      ctx.moveTo(-6, legYStart);
-      ctx.lineTo(-8, legYStart + 18);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(6, legYStart);
-      ctx.lineTo(16, legYStart - 28);
-      ctx.stroke();
+      strokeLegs(() => {
+        ctx.beginPath();
+        ctx.moveTo(-6, legYStart);
+        ctx.lineTo(-8, legYStart + 18);
+      });
+      strokeLegs(() => {
+        ctx.beginPath();
+        ctx.moveTo(6, legYStart);
+        ctx.lineTo(16, legYStart - 28);
+      });
     } else {
-      // Extended roundhouse kick forward
-      ctx.beginPath();
-      ctx.moveTo(-6, legYStart);
-      ctx.lineTo(-8, legYStart + 20);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(6, legYStart);
-      ctx.lineTo(26, legYStart + 4);
-      ctx.stroke();
+      strokeLegs(() => {
+        ctx.beginPath();
+        ctx.moveTo(-6, legYStart);
+        ctx.lineTo(-8, legYStart + 20);
+      });
+      strokeLegs(() => {
+        ctx.beginPath();
+        ctx.moveTo(6, legYStart);
+        ctx.lineTo(26, legYStart + 4);
+      });
     }
   } else if (fighter.currentAction === 'ledge_hang') {
-    // Hanging relaxed legs
-    ctx.beginPath();
-    ctx.moveTo(-4, legYStart);
-    ctx.lineTo(-5, legYStart + 22);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(4, legYStart);
-    ctx.lineTo(3, legYStart + 24);
-    ctx.stroke();
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(-4, legYStart);
+      ctx.lineTo(-5, legYStart + 22);
+    });
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(4, legYStart);
+      ctx.lineTo(3, legYStart + 24);
+    });
   } else if (!fighter.isGrounded) {
-    // Air pose
-    ctx.beginPath();
-    ctx.moveTo(-6, legYStart);
-    ctx.lineTo(-12, legYStart + 16);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(6, legYStart);
-    ctx.lineTo(8, legYStart + 18);
-    ctx.stroke();
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(-6, legYStart);
+      ctx.lineTo(-12, legYStart + 16);
+    });
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(6, legYStart);
+      ctx.lineTo(8, legYStart + 18);
+    });
   } else if (isCrouching) {
-    // Crouch legs
-    ctx.beginPath();
-    ctx.moveTo(-8, legYStart);
-    ctx.lineTo(-14, legYStart + 12);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(6, legYStart);
-    ctx.lineTo(12, legYStart + 12);
-    ctx.stroke();
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(-8, legYStart);
+      ctx.lineTo(-14, legYStart + 12);
+    });
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(6, legYStart);
+      ctx.lineTo(12, legYStart + 12);
+    });
   } else {
-    // Walk / sprint legs
-    ctx.beginPath();
-    ctx.moveTo(-6, legYStart);
-    ctx.lineTo(-6 - walkCycle * 14, legYStart + 20);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(6, legYStart);
-    ctx.lineTo(6 + walkCycle * 14, legYStart + 20);
-    ctx.stroke();
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(-6, legYStart);
+      ctx.lineTo(-6 - walkCycle * 14, legYStart + 20);
+    });
+    strokeLegs(() => {
+      ctx.beginPath();
+      ctx.moveTo(6, legYStart);
+      ctx.lineTo(6 + walkCycle * 14, legYStart + 20);
+    });
   }
 
-  // 3. Torso
-  ctx.fillStyle = mainColor;
-  ctx.beginPath();
-  ctx.roundRect(-12, bodyY - 14, 24, 28, 6);
-  ctx.fill();
+  // Simple inked shoes
+  const shoeAt = (sx: number, sy: number) => {
+    cel(secColor, () => {
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 6, 3.5, 0, 0, Math.PI * 2);
+    }, 2);
+  };
+  if (fighter.currentAction !== 'kick' && fighter.currentAction !== 'super') {
+    if (!fighter.isGrounded) {
+      shoeAt(-12, legYStart + 16);
+      shoeAt(8, legYStart + 18);
+    } else if (isCrouching) {
+      shoeAt(-14, legYStart + 12);
+      shoeAt(12, legYStart + 12);
+    } else if (fighter.currentAction === 'ledge_hang') {
+      shoeAt(-5, legYStart + 22);
+      shoeAt(3, legYStart + 24);
+    } else {
+      shoeAt(-6 - walkCycle * 14, legYStart + 20);
+      shoeAt(6 + walkCycle * 14, legYStart + 20);
+    }
+  }
 
-  // Belt / Chest Armor Accent & Creature Specific Core
-  ctx.fillStyle = secColor;
-  ctx.beginPath();
-  ctx.roundRect(-10, bodyY + 6, 20, 5, 2);
-  ctx.fill();
+  // --- Torso (pear / capsule silhouette) ---
+  cel(mainColor, () => {
+    ctx.beginPath();
+    ctx.roundRect(-13, bodyY - 15, 26, 30, 8);
+  }, 3);
+
+  // Belt sash
+  cel(secColor, () => {
+    ctx.beginPath();
+    ctx.roundRect(-11, bodyY + 5, 22, 6, 2);
+  }, 2);
   drawFighterChestEmblem(ctx, fighter, bodyY, secColor);
 
-  // 4. Head
+  // --- Head ---
   const headY = bodyY - 26;
-  ctx.fillStyle = mainColor;
-  ctx.beginPath();
-  ctx.arc(0, headY, 11, 0, Math.PI * 2);
-  ctx.fill();
+  cel(mainColor, () => {
+    ctx.beginPath();
+    ctx.arc(0, headY, 12, 0, Math.PI * 2);
+  }, 3);
 
-  // Head Accessories (Horns, Wings Plume, Fox Ears, Antennae, Ice Horns)
   drawFighterHeadAccessories(ctx, fighter, headY, animTick);
 
-  // Glowing Eye Visor
-  ctx.fillStyle = isHit ? '#ef4444' : '#ffffff';
-  ctx.shadowColor = '#ffffff';
-  ctx.shadowBlur = 6;
+  // Pie-cut cartoon eyes (inked, no glow)
+  const eyeY = headY - 1;
+  ctx.fillStyle = INK;
   ctx.beginPath();
-  ctx.roundRect(1, headY - 3, 8, 4, 2);
+  ctx.arc(5, eyeY, 3.2, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
+  // Pie wedge cut
+  ctx.fillStyle = mainColor;
+  ctx.beginPath();
+  ctx.moveTo(5, eyeY);
+  ctx.arc(5, eyeY, 3.4, -0.55, 0.35);
+  ctx.closePath();
+  ctx.fill();
+  // Tiny gleam
+  ctx.fillStyle = '#f5efe6';
+  ctx.beginPath();
+  ctx.arc(6.2, eyeY - 1.2, 0.9, 0, Math.PI * 2);
+  ctx.fill();
 
-  // 5. Arms & Hands / Attack Visuals
-  ctx.strokeStyle = mainColor;
-  ctx.lineWidth = 6;
+  // Cheek freckle / smile hint
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(4, headY + 5, 3.5, 0.15, Math.PI - 0.15);
+  ctx.stroke();
+
+  // --- Arms ---
+  const strokeArms = (color: string, draw: () => void) => hose(color, 7, draw);
+  const fist = (fx: number, fy: number, fill = secColor) => {
+    cel(fill, () => {
+      ctx.beginPath();
+      ctx.arc(fx, fy, 6.5, 0, Math.PI * 2);
+    }, 2.5);
+  };
 
   if (fighter.currentAction === 'super') {
     const spin = Math.sin(animTick * 0.6);
-    ctx.strokeStyle = secColor;
-    ctx.lineWidth = 7;
-    ctx.shadowColor = fighter.stats.glowColor;
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.moveTo(2, bodyY - 6);
-    ctx.lineTo(28 + spin * 6, bodyY - 10);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-2, bodyY);
-    ctx.lineTo(-20 - spin * 8, bodyY + 8);
-    ctx.stroke();
-    ctx.fillStyle = mainColor;
-    ctx.beginPath();
-    ctx.arc(28 + spin * 6, bodyY - 10, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    strokeArms(secColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(2, bodyY - 6);
+      ctx.lineTo(28 + spin * 6, bodyY - 10);
+    });
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-2, bodyY);
+      ctx.lineTo(-20 - spin * 8, bodyY + 8);
+    });
+    fist(28 + spin * 6, bodyY - 10, mainColor);
   } else if (fighter.currentAction === 'punch') {
     const punchDir = fighter.attack?.direction;
     if (punchDir === 'up') {
-      // Uppercut
-      ctx.beginPath();
-      ctx.moveTo(4, bodyY - 6);
-      ctx.lineTo(14, bodyY - 36);
-      ctx.stroke();
-      // Fist
-      ctx.fillStyle = secColor;
-      ctx.beginPath();
-      ctx.arc(14, bodyY - 36, 6, 0, Math.PI * 2);
-      ctx.fill();
+      strokeArms(mainColor, () => {
+        ctx.beginPath();
+        ctx.moveTo(4, bodyY - 6);
+        ctx.lineTo(14, bodyY - 36);
+      });
+      fist(14, bodyY - 36);
     } else {
-      // Forward smash punch
-      ctx.beginPath();
-      ctx.moveTo(4, bodyY - 6);
-      ctx.lineTo(26, bodyY - 6);
-      ctx.stroke();
-      // Glove
-      ctx.fillStyle = secColor;
-      ctx.beginPath();
-      ctx.arc(26, bodyY - 6, 7, 0, Math.PI * 2);
-      ctx.fill();
+      strokeArms(mainColor, () => {
+        ctx.beginPath();
+        ctx.moveTo(4, bodyY - 6);
+        ctx.lineTo(26, bodyY - 6);
+      });
+      fist(26, bodyY - 6);
     }
   } else if (fighter.currentAction === 'block') {
-    // Guard: both arms crossed in front + shield arc
-    ctx.strokeStyle = mainColor;
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(-2, bodyY - 10);
-    ctx.lineTo(14, bodyY + 4);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(6, bodyY - 10);
-    ctx.lineTo(-8, bodyY + 6);
-    ctx.stroke();
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-2, bodyY - 10);
+      ctx.lineTo(14, bodyY + 4);
+    });
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(6, bodyY - 10);
+      ctx.lineTo(-8, bodyY + 6);
+    });
+    fist(12, bodyY - 2);
+    fist(-4, bodyY + 2);
 
-    ctx.fillStyle = secColor;
-    ctx.beginPath();
-    ctx.arc(12, bodyY - 2, 5, 0, Math.PI * 2);
-    ctx.arc(-4, bodyY + 2, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Translucent forward shield bubble
+    // Inked wooden shield disc (no neon bubble)
     ctx.save();
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = 10;
+    cel('#e8d5b8', () => {
+      ctx.beginPath();
+      ctx.ellipse(18, bodyY - 2, 13, 20, 0, 0, Math.PI * 2);
+    }, 3);
+    ctx.strokeStyle = 'rgba(26, 18, 14, 0.35)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.ellipse(18, bodyY - 2, 14, 22, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(18, bodyY - 2, 7, 12, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   } else if (fighter.currentAction === 'grab') {
-    // Both arms extended forward grabbing
-    ctx.strokeStyle = '#eab308';
-    ctx.beginPath();
-    ctx.moveTo(2, bodyY - 8);
-    ctx.lineTo(22, bodyY - 8);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(2, bodyY + 2);
-    ctx.lineTo(22, bodyY + 2);
-    ctx.stroke();
-
-    // Grab electric lock
-    ctx.fillStyle = '#fef08a';
-    ctx.beginPath();
-    ctx.arc(24, bodyY - 3, 5, 0, Math.PI * 2);
-    ctx.fill();
+    strokeArms('#c9a030', () => {
+      ctx.beginPath();
+      ctx.moveTo(2, bodyY - 8);
+      ctx.lineTo(22, bodyY - 8);
+    });
+    strokeArms('#c9a030', () => {
+      ctx.beginPath();
+      ctx.moveTo(2, bodyY + 2);
+      ctx.lineTo(22, bodyY + 2);
+    });
+    fist(24, bodyY - 3, '#e8d080');
   } else if (fighter.currentAction.startsWith('throw_')) {
-    // Throwing motion
-    ctx.beginPath();
-    ctx.moveTo(0, bodyY - 6);
-    ctx.lineTo(18, bodyY - 18);
-    ctx.stroke();
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(0, bodyY - 6);
+      ctx.lineTo(18, bodyY - 18);
+    });
   } else if (fighter.currentAction === 'ledge_hang') {
-    // Both arms reaching up and forward gripping the platform edge corner
-    ctx.beginPath();
-    ctx.moveTo(-2, bodyY - 6);
-    ctx.lineTo(12, bodyY - 26);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(6, bodyY - 6);
-    ctx.lineTo(16, bodyY - 26);
-    ctx.stroke();
-
-    // Hands gripping edge
-    ctx.fillStyle = secColor;
-    ctx.beginPath();
-    ctx.arc(12, bodyY - 26, 4, 0, Math.PI * 2);
-    ctx.arc(16, bodyY - 26, 4, 0, Math.PI * 2);
-    ctx.fill();
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-2, bodyY - 6);
+      ctx.lineTo(12, bodyY - 26);
+    });
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(6, bodyY - 6);
+      ctx.lineTo(16, bodyY - 26);
+    });
+    fist(12, bodyY - 26);
+    fist(16, bodyY - 26);
   } else if (fighter.grab.role === 'grabbed') {
-    // Struggling held pose
-    ctx.beginPath();
-    ctx.moveTo(-6, bodyY - 6);
-    ctx.lineTo(-16, bodyY - 14);
-    ctx.stroke();
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-6, bodyY - 6);
+      ctx.lineTo(-16, bodyY - 14);
+    });
   } else {
-    // Normal / idle arms
-    ctx.beginPath();
-    ctx.moveTo(-4, bodyY - 6);
-    ctx.lineTo(-4 - walkCycle * 8, bodyY + 8);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(6, bodyY - 6);
-    ctx.lineTo(8 + walkCycle * 8, bodyY + 8);
-    ctx.stroke();
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(-4, bodyY - 6);
+      ctx.lineTo(-4 - walkCycle * 8, bodyY + 8);
+    });
+    strokeArms(mainColor, () => {
+      ctx.beginPath();
+      ctx.moveTo(6, bodyY - 6);
+      ctx.lineTo(8 + walkCycle * 8, bodyY + 8);
+    });
   }
 
   drawHeldWeapon(ctx, fighter, bodyY, animTick);
-
-  // 6. Creature Status Effects & Visual Auras
   drawFighterStatusEffects(ctx, fighter, bodyY, headY, animTick);
 
   ctx.restore();
@@ -661,9 +1340,13 @@ function drawFighterAccessoriesBack(
   animTick: number,
   isTrail: boolean
 ) {
+  const INK = '#1a120e';
   const id = fighter.stats.id;
   const isSprinting = fighter.isSprinting;
   const isGrounded = fighter.isGrounded;
+
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
 
   if (id === 'zephyr') {
     // ==========================================
@@ -672,27 +1355,34 @@ function drawFighterAccessoriesBack(
     ctx.save();
     
     // Wind Tail
-    ctx.strokeStyle = '#0284c7';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 6;
     ctx.lineCap = 'round';
     const tailWiggle = Math.sin(animTick * 0.25) * 4;
     ctx.beginPath();
     ctx.moveTo(-6, bodyY + 12);
     ctx.quadraticCurveTo(-18, bodyY + 16, -26, bodyY + 22 + tailWiggle);
     ctx.stroke();
+    ctx.strokeStyle = fighter.stats.color;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(-6, bodyY + 12);
+    ctx.quadraticCurveTo(-18, bodyY + 16, -26, bodyY + 22 + tailWiggle);
+    ctx.stroke();
 
     // Tail feather plume
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.ellipse(-26, bodyY + 22 + tailWiggle, 6, 3, -0.4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
 
     // Wings
     if (fighter.isGliding) {
-      // 1. OUTSTRETCHED HORIZONTAL GLIDING WINGS
-      // Back Wing
-      ctx.fillStyle = 'rgba(14, 165, 233, 0.75)';
-      ctx.strokeStyle = '#38bdf8';
+      ctx.fillStyle = fighter.stats.color;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(-4, bodyY - 12);
@@ -703,7 +1393,6 @@ function drawFighterAccessoriesBack(
       ctx.fill();
       ctx.stroke();
 
-      // Front Wing
       ctx.beginPath();
       ctx.moveTo(4, bodyY - 12);
       ctx.lineTo(46, bodyY - 14 + Math.sin(animTick * 0.2) * 2);
@@ -713,22 +1402,19 @@ function drawFighterAccessoriesBack(
       ctx.fill();
       ctx.stroke();
 
-      // Glowing Wingtip feathers
-      ctx.fillStyle = '#bae6fd';
+      ctx.fillStyle = fighter.stats.secondaryColor;
       ctx.beginPath();
       ctx.arc(-44, bodyY - 14 + Math.sin(animTick * 0.2) * 2, 3, 0, Math.PI * 2);
       ctx.arc(46, bodyY - 14 + Math.sin(animTick * 0.2) * 2, 3, 0, Math.PI * 2);
       ctx.fill();
     } else if (!isGrounded) {
-      // 2. ANIMATED FLAPPING WINGS (Airborne / Jumping)
       const flap = Math.sin(animTick * 0.45);
       const flapYOffset = flap * 14;
 
-      ctx.fillStyle = 'rgba(14, 165, 233, 0.85)';
-      ctx.strokeStyle = '#7dd3fc';
+      ctx.fillStyle = fighter.stats.color;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = 2.5;
 
-      // Left/Back Wing flapping
       ctx.beginPath();
       ctx.moveTo(-6, bodyY - 10);
       ctx.quadraticCurveTo(-24, bodyY - 32 + flapYOffset, -38, bodyY - 26 + flapYOffset);
@@ -738,18 +1424,16 @@ function drawFighterAccessoriesBack(
       ctx.fill();
       ctx.stroke();
 
-      // Primary feather ridges
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = fighter.stats.secondaryColor;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(-18, bodyY - 14 + flapYOffset * 0.5);
       ctx.lineTo(-34, bodyY - 22 + flapYOffset);
       ctx.stroke();
     } else {
-      // 3. NEATLY FOLDED WINGS (Grounded / Walking)
-      ctx.fillStyle = 'rgba(2, 132, 199, 0.85)';
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2;
+      ctx.fillStyle = fighter.stats.color;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.5;
 
       ctx.beginPath();
       ctx.moveTo(-6, bodyY - 10);
@@ -760,8 +1444,7 @@ function drawFighterAccessoriesBack(
       ctx.fill();
       ctx.stroke();
 
-      // Layered feather line
-      ctx.strokeStyle = '#7dd3fc';
+      ctx.strokeStyle = fighter.stats.secondaryColor;
       ctx.beginPath();
       ctx.moveTo(-10, bodyY - 4);
       ctx.lineTo(-14, bodyY + 12);
@@ -774,12 +1457,12 @@ function drawFighterAccessoriesBack(
     // GLACIAL YETI: 3 BACK ICE CRYSTALS
     // ==========================================
     ctx.save();
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = 'miter';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = INK;
 
     // Top large ice spire
-    ctx.fillStyle = '#38bdf8';
-    ctx.strokeStyle = '#e0f2fe';
+    ctx.fillStyle = '#9ab8c8';
     ctx.beginPath();
     ctx.moveTo(-8, bodyY - 12);
     ctx.lineTo(-28, bodyY - 34);
@@ -790,15 +1473,17 @@ function drawFighterAccessoriesBack(
     ctx.stroke();
 
     // Central crystal highlight
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#e8f0f4';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(-8, bodyY - 10);
     ctx.lineTo(-27, bodyY - 32);
     ctx.stroke();
 
     // Middle ice spire
-    ctx.fillStyle = '#0284c7';
-    ctx.strokeStyle = '#bae6fd';
+    ctx.fillStyle = '#6a8aa0';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(-10, bodyY - 4);
     ctx.lineTo(-30, bodyY - 10);
@@ -809,8 +1494,7 @@ function drawFighterAccessoriesBack(
     ctx.stroke();
 
     // Lower ice spire
-    ctx.fillStyle = '#0369a1';
-    ctx.strokeStyle = '#7dd3fc';
+    ctx.fillStyle = '#4a6a80';
     ctx.beginPath();
     ctx.moveTo(-8, bodyY + 4);
     ctx.lineTo(-24, bodyY + 14);
@@ -820,9 +1504,8 @@ function drawFighterAccessoriesBack(
     ctx.fill();
     ctx.stroke();
 
-    // Glistening diamond glint on top crystal
     if (!isTrail && Math.sin(animTick * 0.15) > 0.4) {
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = '#f5efe6';
       ctx.beginPath();
       ctx.arc(-28, bodyY - 34, 2.5, 0, Math.PI * 2);
       ctx.fill();
@@ -831,48 +1514,43 @@ function drawFighterAccessoriesBack(
     ctx.restore();
   } else if (id === 'striker') {
     // ==========================================
-    // NEON STRIKER: CYBER JET THRUSTER PACK
+    // STRIKER: INKED THRUSTER PACK
     // ==========================================
     ctx.save();
-    // Metal Pack Housing
-    ctx.fillStyle = '#0f172a';
-    ctx.strokeStyle = '#06b6d4';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = '#3a4048';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.roundRect(-20, bodyY - 12, 10, 22, 3);
     ctx.fill();
     ctx.stroke();
 
-    // Dual Nozzles
-    ctx.fillStyle = '#334155';
+    ctx.fillStyle = '#5a6068';
     ctx.beginPath();
     ctx.arc(-20, bodyY - 6, 3, 0, Math.PI * 2);
     ctx.arc(-20, bodyY + 4, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Blue/Cyan Plasma Flame Exhaust
+    // Flat cel exhaust plumes (no neon plasma)
     const thrustLen = (isSprinting ? 22 : 10) + Math.sin(animTick * 0.8) * 4;
-    const grad = ctx.createLinearGradient(-20, 0, -20 - thrustLen, 0);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.3, '#06b6d4');
-    grad.addColorStop(1, 'rgba(59, 130, 246, 0)');
-
-    ctx.fillStyle = grad;
-    // Top flame jet
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(-20, bodyY - 8);
     ctx.lineTo(-20 - thrustLen, bodyY - 6);
     ctx.lineTo(-20, bodyY - 4);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
 
-    // Bottom flame jet
     ctx.beginPath();
     ctx.moveTo(-20, bodyY + 2);
     ctx.lineTo(-20 - thrustLen, bodyY + 4);
     ctx.lineTo(-20, bodyY + 6);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
 
     ctx.restore();
   } else if (id === 'shinobi') {
@@ -884,9 +1562,9 @@ function drawFighterAccessoriesBack(
     const wave2 = Math.sin(animTick * 0.28 + 1.2) * 7;
     const speedTrail = Math.abs(fighter.vx) * 1.6;
 
-    ctx.fillStyle = '#ec4899';
-    ctx.strokeStyle = '#a855f7';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
 
     // Scarf Tail 1
     ctx.beginPath();
@@ -899,7 +1577,7 @@ function drawFighterAccessoriesBack(
     ctx.stroke();
 
     // Scarf Tail 2 (lower, longer)
-    ctx.fillStyle = '#c026d3';
+    ctx.fillStyle = fighter.stats.color;
     ctx.beginPath();
     ctx.moveTo(-2, bodyY - 14);
     ctx.quadraticCurveTo(-20 - speedTrail * 0.5, bodyY - 8 + wave2, -42 - speedTrail, bodyY - 10 + wave2);
@@ -1066,14 +1744,17 @@ function drawFighterHeadAccessories(
   headY: number,
   animTick: number
 ) {
+  const INK = '#1a120e';
   const id = fighter.stats.id;
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
 
   if (id === 'zephyr') {
     // Aerodynamic feather sky crest plume pointing back
     ctx.save();
-    ctx.fillStyle = '#38bdf8';
-    ctx.strokeStyle = '#bae6fd';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = fighter.stats.color;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(2, headY - 10);
     ctx.quadraticCurveTo(-12, headY - 24, -20, headY - 18);
@@ -1085,9 +1766,9 @@ function drawFighterHeadAccessories(
   } else if (id === 'brawler') {
     // Twin demon flame horns curving up
     ctx.save();
-    ctx.fillStyle = '#f97316';
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
 
     // Front horn
     ctx.beginPath();
@@ -1293,34 +1974,41 @@ function drawFighterChestEmblem(
   ctx: CanvasRenderingContext2D,
   fighter: Fighter,
   bodyY: number,
-  secColor: string
+  _secColor: string
 ) {
+  const INK = '#1a120e';
   const id = fighter.stats.id;
   ctx.save();
+  ctx.shadowBlur = 0;
 
   if (id === 'titan') {
-    // Glowing golden runic chest reactor
-    ctx.fillStyle = '#fef08a';
-    ctx.shadowColor = '#eab308';
-    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#e8d080';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, bodyY - 2, 5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
   } else if (id === 'striker') {
-    // Glowing cyan tech battery
-    ctx.fillStyle = '#67e8f9';
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(-3, bodyY - 5, 6, 8, 1.5);
     ctx.fill();
+    ctx.stroke();
   } else if (id === 'yeti') {
-    // Frosted chest plate
-    ctx.fillStyle = '#e0f2fe';
+    ctx.fillStyle = '#d8e4ec';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.ellipse(0, bodyY - 3, 7, 4, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
   } else if (id === 'zephyr') {
-    // Aerodynamic feathered sky badge
-    ctx.fillStyle = '#bae6fd';
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, bodyY - 6);
     ctx.lineTo(4, bodyY - 1);
@@ -1328,38 +2016,44 @@ function drawFighterChestEmblem(
     ctx.lineTo(-4, bodyY - 1);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
   } else if (id === 'shinobi') {
-    // Ninja sash kunai handle
-    ctx.strokeStyle = '#ec4899';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(-6, bodyY - 8);
+    ctx.lineTo(6, bodyY + 4);
+    ctx.stroke();
+    ctx.strokeStyle = fighter.stats.secondaryColor;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(-6, bodyY - 8);
     ctx.lineTo(6, bodyY + 4);
     ctx.stroke();
   } else if (id === 'monk') {
-    // Jade monkey medallion
-    ctx.fillStyle = '#a3e635';
-    ctx.strokeStyle = '#365314';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = '#7a9a40';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, bodyY - 2, 4.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   } else if (id === 'lotus') {
-    // Spiked bracelet / wrist cuff markers on torso sash
-    ctx.fillStyle = '#f472b6';
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(-7, bodyY + 2, 14, 4, 1);
     ctx.fill();
-    ctx.fillStyle = '#e2e8f0';
+    ctx.stroke();
+  } else if (id === 'brawler') {
+    ctx.fillStyle = fighter.stats.secondaryColor;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-5, bodyY + 2);
-    ctx.lineTo(-3, bodyY - 1);
-    ctx.lineTo(-1, bodyY + 2);
-    ctx.moveTo(1, bodyY + 2);
-    ctx.lineTo(3, bodyY - 1);
-    ctx.lineTo(5, bodyY + 2);
+    ctx.arc(0, bodyY - 2, 4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -1403,18 +2097,20 @@ function drawFighterStatusEffects(
     ctx.stroke();
   }
 
-  // 1c. Super flash aura
+  // 1c. Super flash aura — ink ring, no glow bloom
   if (fighter.superFlash && fighter.superFlash > 0) {
-    ctx.strokeStyle = fighter.stats.secondaryColor;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = fighter.stats.glowColor;
-    ctx.shadowBlur = 18;
+    ctx.strokeStyle = '#1a120e';
+    ctx.lineWidth = 4;
     ctx.globalAlpha = Math.min(1, fighter.superFlash / 20);
     ctx.beginPath();
     ctx.ellipse(0, bodyY, 26 + Math.sin(animTick * 0.4) * 4, 34, 0, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.strokeStyle = fighter.stats.secondaryColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, bodyY, 26 + Math.sin(animTick * 0.4) * 4, 34, 0, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
   }
 
   // Ready super meter shimmer
@@ -1458,12 +2154,15 @@ function drawFighterStatusEffects(
     ctx.stroke();
   }
 
-  // 4. SUPER ARMOR: Golden radiant shield outline
+  // 4. SUPER ARMOR: inked bronze shield outline
   if (fighter.hasSuperArmor) {
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 3;
-    ctx.shadowColor = '#eab308';
-    ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#1a120e';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-16, bodyY - 18, 32, 54, 10);
+    ctx.stroke();
+    ctx.strokeStyle = '#c9a030';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(-16, bodyY - 18, 32, 54, 10);
     ctx.stroke();
@@ -1532,17 +2231,23 @@ function renderRespawnHalo(ctx: CanvasRenderingContext2D, fighter: Fighter) {
   ctx.save();
   ctx.translate(fighter.x, fighter.y);
 
-  // Glowing Halo Respawn Platform
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 4;
-  ctx.shadowColor = '#38bdf8';
-  ctx.shadowBlur = 15;
+  // Inked parchment respawn disc
+  ctx.fillStyle = '#e8d5b8';
+  ctx.strokeStyle = '#1a120e';
+  ctx.lineWidth = 3.5;
   ctx.beginPath();
   ctx.ellipse(0, 30, 42, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.stroke();
 
-  // Light beam descending
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+  ctx.strokeStyle = 'rgba(26, 18, 14, 0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 30, 28, 7, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Soft light wash descending
+  ctx.fillStyle = 'rgba(240, 224, 200, 0.25)';
   ctx.beginPath();
   ctx.moveTo(-35, 30);
   ctx.lineTo(-15, -40);
@@ -1551,7 +2256,6 @@ function renderRespawnHalo(ctx: CanvasRenderingContext2D, fighter: Fighter) {
   ctx.closePath();
   ctx.fill();
 
-  // Draw Fighter hovering
   drawFighterModel(ctx, 0, 0, fighter, 0, false);
 
   ctx.restore();
