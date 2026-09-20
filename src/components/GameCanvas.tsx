@@ -78,10 +78,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const cameraRef = useRef<CameraState>({
     x: 700,
     y: 400,
-    zoom: 0.95,
+    zoom: 0.55,
     targetX: 700,
     targetY: 400,
-    targetZoom: 0.95,
+    targetZoom: 0.55,
     shakeTimer: 0,
     shakeIntensity: 0,
   });
@@ -117,13 +117,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     particlesRef.current = [];
     itemWorldRef.current = createEmptyItemWorld();
     itemSpawnTimerRef.current = FIRST_ITEM_DELAY;
+
+    const stage = stageRef.current;
+    const canvas = canvasRef.current;
+    const pad = 1.06;
+    let fitZoom = 0.55;
+    if (canvas && canvas.width > 0 && canvas.height > 0) {
+      fitZoom = Math.min(
+        canvas.width / (stage.width * pad),
+        canvas.height / (stage.height * pad)
+      );
+    }
     cameraRef.current = {
-      x: 700,
-      y: 400,
-      zoom: 0.95,
-      targetX: 700,
-      targetY: 400,
-      targetZoom: 0.95,
+      x: stage.width / 2,
+      y: stage.height / 2,
+      zoom: fitZoom,
+      targetX: stage.width / 2,
+      targetY: stage.height / 2,
+      targetZoom: fitZoom,
       shakeTimer: 0,
       shakeIntensity: 0,
     };
@@ -404,21 +415,53 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // --- Dynamic Camera Calculation ---
+      // Zoom is canvas-aware: never zoom in past "full stage visible" so iPad /
+      // iPhone Safari always show the entire arena instead of a cropped close-up.
       const p1 = p1Ref.current;
       const p2 = p2Ref.current;
       const cam = cameraRef.current;
+      const stage = stageRef.current;
+
+      const STAGE_VIEW_PAD = 1.06;
+      const fitZoom = Math.min(
+        width / (stage.width * STAGE_VIEW_PAD),
+        height / (stage.height * STAGE_VIEW_PAD)
+      );
 
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2 - 40;
       const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
-      // Zoom scales with distance
-      const targetZoom = Math.max(0.62, Math.min(1.15, 1100 / (dist + 500)));
+      // Distance framing relative to fit: close → full stage; far → slight zoom-out
+      const distFactor = Math.max(0.82, Math.min(1, 1100 / (dist + 500) / 1.1));
+      const targetZoom = fitZoom * distFactor;
+
+      // Prefer stage center when the view already covers the stage (tablets / phones)
+      const provisionalZoom = Math.max(0.05, cam.zoom || fitZoom);
+      const viewW = width / provisionalZoom;
+      const viewH = height / provisionalZoom;
+      let targetX = midX;
+      let targetY = midY;
+      if (viewW >= stage.width) {
+        targetX = stage.width / 2;
+      } else {
+        const halfW = viewW / 2;
+        targetX = Math.max(halfW, Math.min(stage.width - halfW, midX));
+      }
+      if (viewH >= stage.height) {
+        targetY = stage.height / 2;
+      } else {
+        const halfH = viewH / 2;
+        targetY = Math.max(halfH, Math.min(stage.height - halfH, midY));
+      }
 
       // Smooth camera interpolation
-      cam.x += (midX - cam.x) * 0.08;
-      cam.y += (midY - cam.y) * 0.08;
-      cam.zoom += (targetZoom - cam.zoom) * 0.05;
+      cam.targetX = targetX;
+      cam.targetY = targetY;
+      cam.targetZoom = targetZoom;
+      cam.x += (targetX - cam.x) * 0.08;
+      cam.y += (targetY - cam.y) * 0.08;
+      cam.zoom += (targetZoom - cam.zoom) * 0.08;
 
       // Apply Screen Shake
       let shakeOffsetX = 0;
@@ -481,9 +524,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (rect.width > 0 && rect.height > 0) {
           const newW = Math.floor(rect.width);
           const newH = Math.floor(rect.height);
-          if (canvasRef.current.width !== newW || canvasRef.current.height !== newH) {
+          const sizeChanged =
+            canvasRef.current.width !== newW || canvasRef.current.height !== newH;
+          if (sizeChanged) {
             canvasRef.current.width = newW;
             canvasRef.current.height = newH;
+            // Snap zoom to fit the full stage on orientation / viewport changes
+            const stage = stageRef.current;
+            if (stage) {
+              const fitZoom = Math.min(
+                newW / (stage.width * 1.06),
+                newH / (stage.height * 1.06)
+              );
+              const cam = cameraRef.current;
+              cam.zoom = fitZoom;
+              cam.targetZoom = fitZoom;
+              cam.x = stage.width / 2;
+              cam.y = stage.height / 2;
+              cam.targetX = stage.width / 2;
+              cam.targetY = stage.height / 2;
+            }
           }
         }
       }
