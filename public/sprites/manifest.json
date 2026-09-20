@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "notes": "Hitbox stays 44×64 in world space. Draw art larger so wings/horns/scarves fit; feet sit on the bottom of the hitbox.",
+  "world": {
+    "stageWidth": 1400,
+    "stageHeight": 800,
+    "hitboxWidth": 44,
+    "hitboxHeight": 64,
+    "origin": "center of body"
+  },
+  "frameSizes": {
+    "inGame": {
+      "width": 128,
+      "height": 128,
+      "format": "transparent PNG",
+      "pivot": { "x": 64, "y": 96 },
+      "hitboxInsideFrame": { "x": 42, "y": 32, "w": 44, "h": 64 },
+      "facing": "draw facing RIGHT; flip in code for left"
+    },
+    "portrait": {
+      "width": 256,
+      "height": 256,
+      "format": "transparent PNG",
+      "usage": "character select + victory"
+    },
+    "hud": {
+      "width": 64,
+      "height": 64,
+      "format": "transparent PNG",
+      "usage": "stock / nameplate icon"
+    },
+    "fx": {
+      "width": 128,
+      "height": 128,
+      "format": "transparent PNG strip or sheet"
+    }
+  },
+  "sheetConvention": {
+    "layout": "horizontal strip",
+    "frameWidth": 128,
+    "frameHeight": 128,
+    "filename": "{anim}.png  OR  {anim}_{frame}.png",
+    "example": "walk.png = 6 frames → 768×128"
+  },
+  "fighters": {
+    "zephyr": { "name": "James", "folder": "zephyr" },
+    "brawler": { "name": "Andrew", "folder": "brawler" },
+    "yeti": { "name": "Julian", "folder": "yeti" },
+    "striker": { "name": "Bodhi", "folder": "striker" },
+    "titan": { "name": "Felix", "folder": "titan" },
+    "shinobi": { "name": "Maui", "folder": "shinobi" },
+    "monk": { "name": "Aaron", "folder": "monk" },
+    "lotus": { "name": "Lyla", "folder": "lotus" }
+  },
+  "requiredAnims": [
+    { "id": "idle", "frames": 4 },
+    { "id": "walk", "frames": 6 },
+    { "id": "sprint", "frames": 6 },
+    { "id": "jump", "frames": 2 },
+    { "id": "fall", "frames": 2 },
+    { "id": "crouch", "frames": 1 },
+    { "id": "punch", "frames": 4 },
+    { "id": "kick", "frames": 4 },
+    { "id": "block", "frames": 1 },
+    { "id": "grab", "frames": 2 },
+    { "id": "throw", "frames": 3 },
+    { "id": "hitstun", "frames": 2 },
+    { "id": "ledge_hang", "frames": 1 },
+    { "id": "ledge_climb", "frames": 3 },
+    { "id": "super", "frames": 8 },
+    { "id": "respawn", "frames": 2 }
+  ],
+  "uiPerFighter": ["portrait.png", "hud.png"],
+  "specialPerFighter": {
+    "zephyr": ["glide.png", "fx_gale.png"],
+    "brawler": ["dive.png", "fx_burn.png", "fx_meteor.png"],
+    "yeti": ["fx_frost.png", "fx_spikes.png", "fx_freeze.png"],
+    "striker": ["charged.png", "fx_bolt.png", "fx_rail.png"],
+    "titan": ["armor.png", "fx_quake.png"],
+    "shinobi": ["phase.png", "fx_backstab.png"],
+    "monk": ["sway.png", "spin.png"],
+    "lotus": ["kick_flurry.png", "fx_lotus.png"]
+  },
+  "sharedFx": {
+    "folder": "_fx",
+    "files": [
+      "hit_spark.png",
+      "dust.png",
+      "ko_burst.png",
+      "super_flash.png"
+    ]
+  }
+}

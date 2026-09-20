@@ -160,6 +160,45 @@ export const HUD: React.FC<HUDProps> = ({
     );
   };
 
+  const renderItemDurabilityBar = (fighter: Fighter, align: 'left' | 'right') => {
+    const held = fighter.heldWeapon;
+    if (!held) return null;
+    const def = ITEM_DEFS[held.kind];
+    const maxUses = Math.max(1, def.uses);
+    const pct = Math.min(100, Math.max(0, (held.usesLeft / maxUses) * 100));
+    const low = pct <= 35;
+    return (
+      <div className={`flex items-center gap-1.5 mt-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+        <div
+          className="w-20 sm:w-32 md:w-40 h-1.5 bg-slate-950 border rounded-full overflow-hidden p-[1px]"
+          style={{
+            borderColor: low ? '#fb7185' : `${def.glowColor}99`,
+            boxShadow: low ? '0 0 8px rgba(251,113,133,0.45)' : `0 0 8px ${def.glowColor}55`,
+          }}
+        >
+          <div
+            className="h-full rounded-full transition-[width] duration-100"
+            style={{
+              width: `${Math.max(pct, pct > 0 ? 4 : 0)}%`,
+              background: low
+                ? 'linear-gradient(to right, #f43f5e, #fb7185)'
+                : `linear-gradient(to right, ${def.color}, ${def.glowColor})`,
+            }}
+          />
+        </div>
+        <span
+          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider shrink-0 ${
+            low ? 'text-rose-400' : 'text-slate-400'
+          }`}
+          style={!low ? { color: def.glowColor } : undefined}
+          title={`${def.name} durability`}
+        >
+          {held.usesLeft}/{maxUses}
+        </span>
+      </div>
+    );
+  };
+
   const activeGrabber = p1.grab.role === 'grabber' ? p1 : p2.grab.role === 'grabber' ? p2 : null;
   const isP1LedgeHanging = p1.currentAction === 'ledge_hang';
 
@@ -174,7 +213,9 @@ export const HUD: React.FC<HUDProps> = ({
       */}
       <header
         id="battle-header"
-        className="h-[4.25rem] sm:h-[4.75rem] w-full bg-slate-900/95 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 shadow-xl z-20"
+        className={`${
+          p1.heldWeapon || p2.heldWeapon ? 'h-[5.25rem] sm:h-[5.75rem]' : 'h-[4.25rem] sm:h-[4.75rem]'
+        } w-full bg-slate-900/95 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 shadow-xl z-20 transition-[height] duration-150`}
       >
         {/* PLAYER 1 HEALTH BAR & CARD (TOP-LEFT) */}
         <div id="p1-health-display" className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -215,7 +256,6 @@ export const HUD: React.FC<HUDProps> = ({
                   }}
                 >
                   {ITEM_DEFS[p1.heldWeapon.kind].name}
-                  <span className="font-mono text-slate-200">×{p1.heldWeapon.usesLeft}</span>
                 </span>
               )}
             </div>
@@ -240,6 +280,7 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
             {renderSprintBar(p1, 'left')}
             {renderSuperBar(p1, 'left')}
+            {renderItemDurabilityBar(p1, 'left')}
           </div>
         </div>
 
@@ -389,7 +430,6 @@ export const HUD: React.FC<HUDProps> = ({
                   }}
                 >
                   {ITEM_DEFS[p2.heldWeapon.kind].name}
-                  <span className="font-mono text-slate-200">×{p2.heldWeapon.usesLeft}</span>
                 </span>
               )}
             </div>
@@ -414,6 +454,7 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
             {renderSprintBar(p2, 'right')}
             {renderSuperBar(p2, 'right')}
+            {renderItemDurabilityBar(p2, 'right')}
           </div>
 
           <div

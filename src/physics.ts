@@ -83,7 +83,7 @@ export function createInitialFighter(
     attack: null,
     grab: { role: 'none', duration: 0, maxDuration: 0 },
     hitstun: 0,
-    invincibleFrames: 120, // 2s at 60fps
+    invincibleFrames: 0,
     respawnTimer: 0,
     ledgeHang: null,
     ledgeCooldownTimer: 0,
@@ -128,7 +128,6 @@ export function updateFighterPhysics(
     fighter.sprintStamina = SPRINT_STAMINA_MAX;
     fighter.currentAction = 'respawning';
     if (fighter.respawnTimer === 0) {
-      fighter.invincibleFrames = 120;
       fighter.currentAction = 'idle';
     }
     return { koOccurred: false };
@@ -641,9 +640,12 @@ export function updateFighterPhysics(
   }
 
   // Zephyr Drake: Wing Gliding Mechanics
+  // Only slow descent while falling — never damp upward jump velocity
+  // (holding Jump for a grounded hop used to gut single-jump height).
   if (fighter.stats.id === 'zephyr') {
     if (!fighter.isGrounded) {
-      if (input.up || input.sprint) {
+      const wantsGlide = input.up || input.sprint;
+      if (wantsGlide && fighter.vy >= 0) {
         fighter.isGliding = true;
         // Gliding physics: very slow gentle descent + forward aerodynamic momentum
         fighter.vy = Math.min(fighter.vy * 0.74, 1.4);
