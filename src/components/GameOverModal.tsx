@@ -23,7 +23,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   if (!winner) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md animate-in zoom-in-95 duration-200 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))]">
       <div className="text-center max-w-lg w-full bg-slate-900/90 border border-slate-700/80 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
         {/* Animated Accent Glow */}
         <div

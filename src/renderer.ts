@@ -838,13 +838,14 @@ const PORTRAIT_LAYOUT: Record<
   titan: { worldW: 90, worldH: 100, offsetY: 8 },
   // Flowing scarf + kitsune ears
   shinobi: { worldW: 100, worldH: 98, offsetY: 6 },
-  // Sake gourd + monkey ears + sash
-  monk: { worldW: 92, worldH: 100, offsetY: 8 },
+  // Tall lean frame + sake gourd + monkey ears + sash
+  monk: { worldW: 88, worldH: 118, offsetY: 14 },
   // Twin buns + skirt flaps
   lotus: { worldW: 88, worldH: 100, offsetY: 8 },
 };
 
 function createPortraitFighter(stats: FighterStats): Fighter {
+  const isMonk = stats.id === 'monk';
   const fighter: Fighter = {
     playerIndex: 0,
     isCpu: false,
@@ -853,8 +854,8 @@ function createPortraitFighter(stats: FighterStats): Fighter {
     y: 0,
     vx: 0,
     vy: 0,
-    width: 44,
-    height: 64,
+    width: isMonk ? 34 : 44,
+    height: isMonk ? 74 : 64,
     facing: 1,
     isGrounded: true,
     onDropThroughPlatform: false,
@@ -1019,9 +1020,9 @@ function getFighterSilhouette(id: FighterId): FighterSilhouette {
       };
     case 'monk':
       return {
-        legWidth: 8, armWidth: 7.5, fistR: 7, shoeRx: 7, shoeRy: 4,
-        headR: 13, headYOffset: -24, shadowW: 22, hip: 2, legLen: 16,
-        eyeX: 5, eyeR: 3.3, feminine: false, face: 'grin',
+        legWidth: 5.5, armWidth: 5.5, fistR: 5.5, shoeRx: 5.5, shoeRy: 3.2,
+        headR: 11, headYOffset: -30, shadowW: 15, hip: 0, legLen: 26,
+        eyeX: 4.5, eyeR: 2.9, feminine: false, face: 'grin',
       };
     case 'lotus':
       return {
@@ -1136,19 +1137,19 @@ function drawFighterTorsoShape(
       ctx.roundRect(-7, bodyY + 5, 14, 5, 2);
     }, 2);
   } else if (id === 'monk') {
-    // Pot-bellied monkey sage
+    // Lean tall monkey sage — narrow torso, long silhouette
     cel(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-12, bodyY - 14);
-      ctx.quadraticCurveTo(-18, bodyY + 2, -14, bodyY + 16);
-      ctx.quadraticCurveTo(0, bodyY + 20, 14, bodyY + 16);
-      ctx.quadraticCurveTo(18, bodyY + 2, 12, bodyY - 14);
-      ctx.quadraticCurveTo(0, bodyY - 17, -12, bodyY - 14);
+      ctx.moveTo(-8, bodyY - 18);
+      ctx.quadraticCurveTo(-10, bodyY - 2, -7, bodyY + 16);
+      ctx.quadraticCurveTo(0, bodyY + 19, 7, bodyY + 16);
+      ctx.quadraticCurveTo(10, bodyY - 2, 8, bodyY - 18);
+      ctx.quadraticCurveTo(0, bodyY - 20, -8, bodyY - 18);
       ctx.closePath();
     }, 3);
     cel(secColor, () => {
       ctx.beginPath();
-      ctx.roundRect(-11, bodyY + 6, 22, 6, 3);
+      ctx.roundRect(-6, bodyY + 6, 12, 4, 2);
     }, 2);
   } else if (id === 'lotus') {
     // Feminine hourglass — narrow shoulders, cinched waist, flared hips
@@ -1268,15 +1269,15 @@ function drawFighterHeadShape(
       ctx.ellipse(0, headY, headR - 0.5, headR + 1, 0, 0, Math.PI * 2);
     }, 3);
   } else if (id === 'monk') {
-    // Round monkey face (masculine goof)
+    // Leaner monkey face — oval, not pot-cheeked
     cel(mainColor, () => {
       ctx.beginPath();
-      ctx.ellipse(0, headY + 1, headR + 0.5, headR, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, headY, headR - 0.5, headR + 1.2, 0, 0, Math.PI * 2);
     }, 3);
     // Snout pad
     cel('#e8d5a0', () => {
       ctx.beginPath();
-      ctx.ellipse(3, headY + 4, 6, 4.5, 0.1, 0, Math.PI * 2);
+      ctx.ellipse(2.5, headY + 3.5, 4.5, 3.5, 0.1, 0, Math.PI * 2);
     }, 2);
   } else if (id === 'lotus') {
     // Soft feminine oval — smaller chin, fuller cheeks
@@ -2125,27 +2126,27 @@ function drawFighterAccessoriesBack(
     ctx.closePath();
     ctx.fill();
 
-    // Sake gourd on back
+    // Sake gourd on back (smaller to match lean frame)
     ctx.fillStyle = '#854d0e';
     ctx.strokeStyle = '#ca8a04';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.ellipse(-16, bodyY - 2, 7, 10, -0.25, 0, Math.PI * 2);
+    ctx.ellipse(-14, bodyY - 4, 5.5, 8, -0.25, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     // Gourd cork
     ctx.fillStyle = '#d6d3d1';
     ctx.beginPath();
-    ctx.roundRect(-20, bodyY - 14, 5, 5, 1);
+    ctx.roundRect(-17, bodyY - 14, 4, 4, 1);
     ctx.fill();
 
     // Rope wrap
     ctx.strokeStyle = '#fef08a';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(-21, bodyY - 2);
-    ctx.lineTo(-11, bodyY);
+    ctx.moveTo(-18, bodyY - 4);
+    ctx.lineTo(-10, bodyY - 2);
     ctx.stroke();
 
     ctx.restore();
@@ -2361,33 +2362,33 @@ function drawFighterHeadAccessories(
     ctx.stroke();
     ctx.restore();
   } else if (id === 'monk') {
-    // Round monkey ears + prayer bead band
+    // Slimmer monkey ears + prayer bead band
     ctx.save();
     ctx.fillStyle = '#a16207';
     ctx.strokeStyle = '#ca8a04';
     ctx.lineWidth = 1.5;
 
     ctx.beginPath();
-    ctx.ellipse(10, headY - 2, 5, 6, 0.15, 0, Math.PI * 2);
+    ctx.ellipse(9, headY - 2, 4, 5, 0.15, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(-10, headY - 2, 5, 6, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(-9, headY - 2, 4, 5, -0.15, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     // Inner ear
     ctx.fillStyle = '#fde68a';
     ctx.beginPath();
-    ctx.ellipse(10, headY - 2, 2.5, 3, 0.15, 0, Math.PI * 2);
-    ctx.ellipse(-10, headY - 2, 2.5, 3, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(9, headY - 2, 2, 2.5, 0.15, 0, Math.PI * 2);
+    ctx.ellipse(-9, headY - 2, 2, 2.5, -0.15, 0, Math.PI * 2);
     ctx.fill();
 
     // Prayer beads across forehead
     ctx.fillStyle = '#84cc16';
     for (let i = -3; i <= 3; i++) {
       ctx.beginPath();
-      ctx.arc(i * 3.2, headY - 7, 1.6, 0, Math.PI * 2);
+      ctx.arc(i * 2.8, headY - 7, 1.4, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -2524,7 +2525,7 @@ function drawFighterChestEmblem(
     ctx.strokeStyle = INK;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, bodyY - 2, 4.5, 0, Math.PI * 2);
+    ctx.arc(0, bodyY - 4, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   } else if (id === 'lotus') {

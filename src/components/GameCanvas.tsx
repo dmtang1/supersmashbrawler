@@ -470,7 +470,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   }, [isPaused, settings, onUpdateFighters, onGameOver, addScreenShake]);
 
-  // Handle Responsive Resize
+  // Handle Responsive Resize (incl. iOS Safari visualViewport / URL bar)
   useEffect(() => {
     const parent = canvasRef.current?.parentElement;
     if (!parent) return;
@@ -493,9 +493,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const observer = new ResizeObserver(updateSize);
     observer.observe(parent);
     window.addEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', updateSize);
+    window.visualViewport?.addEventListener('resize', updateSize);
+    window.visualViewport?.addEventListener('scroll', updateSize);
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', updateSize);
+      window.visualViewport?.removeEventListener('resize', updateSize);
+      window.visualViewport?.removeEventListener('scroll', updateSize);
     };
   }, []);
 

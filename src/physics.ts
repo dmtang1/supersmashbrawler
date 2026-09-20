@@ -57,6 +57,8 @@ export function createInitialFighter(
   spawnPoint: { x: number; y: number },
   facing: 1 | -1
 ): Fighter {
+  // Aaron (monk): taller / skinnier frame than the default 44×64 hitbox
+  const isMonk = stats?.id === 'monk';
   return {
     playerIndex,
     isCpu,
@@ -65,8 +67,8 @@ export function createInitialFighter(
     y: spawnPoint.y,
     vx: 0,
     vy: 0,
-    width: 44,
-    height: 64,
+    width: isMonk ? 34 : 44,
+    height: isMonk ? 74 : 64,
     facing,
     isGrounded: false,
     onDropThroughPlatform: false,

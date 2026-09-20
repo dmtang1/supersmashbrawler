@@ -214,8 +214,10 @@ export const HUD: React.FC<HUDProps> = ({
       <header
         id="battle-header"
         className={`${
-          p1.heldWeapon || p2.heldWeapon ? 'h-[5.25rem] sm:h-[5.75rem]' : 'h-[4.25rem] sm:h-[4.75rem]'
-        } w-full bg-slate-900/95 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 shadow-xl z-20 transition-[height] duration-150`}
+          p1.heldWeapon || p2.heldWeapon
+            ? 'h-[calc(5.25rem+env(safe-area-inset-top,0px))] sm:h-[calc(5.75rem+env(safe-area-inset-top,0px))]'
+            : 'h-[calc(4.25rem+env(safe-area-inset-top,0px))] sm:h-[calc(4.75rem+env(safe-area-inset-top,0px))]'
+        } w-full bg-slate-900/95 border-b border-slate-800 pt-[env(safe-area-inset-top,0px)] pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] sm:pl-[max(1rem,env(safe-area-inset-left,0px))] sm:pr-[max(1rem,env(safe-area-inset-right,0px))] flex items-center justify-between shrink-0 shadow-xl z-20 transition-[height] duration-150 box-border`}
       >
         {/* PLAYER 1 HEALTH BAR & CARD (TOP-LEFT) */}
         <div id="p1-health-display" className="flex items-center gap-2 sm:gap-3 shrink-0">

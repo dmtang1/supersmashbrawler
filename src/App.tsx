@@ -167,7 +167,7 @@ export default function App() {
   }, []);
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none">
+    <main className="relative w-full h-full max-h-full overflow-hidden bg-slate-950 font-sans select-none touch-none">
       {screen === 'start' ? (
         <StartScreen
           settings={settings}
