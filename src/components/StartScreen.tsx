@@ -1,5 +1,5 @@
 import React from 'react';
-import { Swords, Bot, Users, Shield, ArrowRight } from 'lucide-react';
+import { Swords, Bot, Users, Shield, ArrowRight, Settings, Circle, ArrowUp } from 'lucide-react';
 import { FighterId, GameMode, GameSettings } from '../types';
 import { FIGHTERS } from '../fighters';
 import { RANDOM_STAGE_ID, STAGES } from '../stages';
@@ -10,6 +10,7 @@ interface StartScreenProps {
   settings: GameSettings;
   onUpdateSettings: (newSettings: GameSettings) => void;
   onStartBattle: () => void;
+  onOpenSettings: () => void;
 }
 
 const DIFF_PRESETS = [
@@ -30,6 +31,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   settings,
   onUpdateSettings,
   onStartBattle,
+  onOpenSettings,
 }) => {
   const fighterList = Object.values(FIGHTERS);
   const selectedP1 = FIGHTERS[settings.p1Fighter];
@@ -80,7 +82,19 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           </h1>
         </div>
 
-        <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-900/90 border border-slate-800 p-0.5 sm:p-1 rounded-xl shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            id="start-open-settings-btn"
+            type="button"
+            onClick={onOpenSettings}
+            title="Settings"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700 text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 font-bold text-[10px] sm:text-xs transition cursor-pointer"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-900/90 border border-slate-800 p-0.5 sm:p-1 rounded-xl shrink-0">
           <button
             id="start-mode-cpu-btn"
             onClick={() => handleSetMode('cpu')}
@@ -117,6 +131,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             <Users className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">2P</span>
           </button>
+          </div>
         </div>
       </header>
 
@@ -237,6 +252,40 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
+              Pad
+            </span>
+            <div className="flex gap-0.5 sm:gap-1">
+              <button
+                id="start-touch-joystick-btn"
+                type="button"
+                onClick={() => onUpdateSettings({ ...settings, touchMoveStyle: 'joystick' })}
+                className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-bold transition cursor-pointer ${
+                  settings.touchMoveStyle === 'joystick'
+                    ? 'bg-sky-500 text-white shadow'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+              >
+                <Circle className="w-3 h-3" />
+                Stick
+              </button>
+              <button
+                id="start-touch-dpad-btn"
+                type="button"
+                onClick={() => onUpdateSettings({ ...settings, touchMoveStyle: 'dpad' })}
+                className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-bold transition cursor-pointer ${
+                  settings.touchMoveStyle === 'dpad'
+                    ? 'bg-sky-500 text-white shadow'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+              >
+                <ArrowUp className="w-3 h-3" />
+                D-Pad
+              </button>
+            </div>
           </div>
         </div>
 

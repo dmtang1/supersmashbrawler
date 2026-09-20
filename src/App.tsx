@@ -15,17 +15,31 @@ import { sound } from './audio';
 export default function App() {
   const [screen, setScreen] = useState<'start' | 'battle'>('start');
 
-  const [settings, setSettings] = useState<GameSettings>({
-    mode: 'cpu',
-    cpuLevel: 1, // Default Easy — soft AI so new players can land hits
-    stocks: 3,
-    matchDuration: 120, // 2 minutes
-    stageId: 'random',
-    p1Fighter: 'brawler',
-    p2Fighter: 'striker',
-    soundEnabled: true,
-    musicEnabled: true,
+  const [settings, setSettings] = useState<GameSettings>(() => {
+    const savedMove = localStorage.getItem('ssb-touch-move');
+    const touchMoveStyle =
+      savedMove === 'dpad' || savedMove === 'joystick' ? savedMove : 'joystick';
+    return {
+      mode: 'cpu',
+      cpuLevel: 1, // Default Easy — soft AI so new players can land hits
+      stocks: 3,
+      matchDuration: 120, // 2 minutes
+      stageId: 'random',
+      playerCount: 2,
+      p1Fighter: 'brawler',
+      p2Fighter: 'striker',
+      p3Fighter: 'titan',
+      p4Fighter: 'shinobi',
+      soundEnabled: true,
+      musicEnabled: true,
+      touchMoveStyle,
+    };
   });
+
+  const handleUpdateSettings = useCallback((next: GameSettings) => {
+    setSettings(next);
+    localStorage.setItem('ssb-touch-move', next.touchMoveStyle);
+  }, []);
 
   const [isPaused, setIsPaused] = useState(false);
   const [isControlsOpen, setIsControlsOpen] = useState(false);
@@ -171,8 +185,9 @@ export default function App() {
       {screen === 'start' ? (
         <StartScreen
           settings={settings}
-          onUpdateSettings={setSettings}
+          onUpdateSettings={handleUpdateSettings}
           onStartBattle={handleStartBattle}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
       ) : (
         <HUD
@@ -229,10 +244,11 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        onUpdateSettings={setSettings}
+        onUpdateSettings={handleUpdateSettings}
+        applyLabel={screen === 'battle' ? 'Apply & Restart Match' : 'Done'}
         onStartMatch={() => {
           setIsSettingsOpen(false);
-          handleRestart();
+          if (screen === 'battle') handleRestart();
         }}
       />
 

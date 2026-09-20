@@ -838,8 +838,8 @@ const PORTRAIT_LAYOUT: Record<
   titan: { worldW: 90, worldH: 100, offsetY: 8 },
   // Flowing scarf + kitsune ears
   shinobi: { worldW: 100, worldH: 98, offsetY: 6 },
-  // Tall lean frame + sake gourd + monkey ears + sash
-  monk: { worldW: 88, worldH: 118, offsetY: 14 },
+  // Monkey ears + curling tail need room behind
+  monk: { worldW: 100, worldH: 110, offsetY: 12 },
   // Twin buns + skirt flaps
   lotus: { worldW: 88, worldH: 100, offsetY: 8 },
 };
@@ -854,8 +854,8 @@ function createPortraitFighter(stats: FighterStats): Fighter {
     y: 0,
     vx: 0,
     vy: 0,
-    width: isMonk ? 34 : 44,
-    height: isMonk ? 74 : 64,
+    width: isMonk ? 36 : 44,
+    height: isMonk ? 68 : 64,
     facing: 1,
     isGrounded: true,
     onDropThroughPlatform: false,
@@ -891,6 +891,7 @@ function createPortraitFighter(stats: FighterStats): Fighter {
     superMeter: 0,
     freezeTimer: 0,
     superFlash: 0,
+    speedBoostTimer: 0,
     heldWeapon: null,
   };
 
@@ -902,20 +903,12 @@ function createPortraitFighter(stats: FighterStats): Fighter {
       fighter.isGliding = true;
       break;
     case 'striker':
-      // Longer thruster jets + charged lightning arcs
+      // Thruster jets on without static-charge lightning arcs
       fighter.isSprinting = true;
-      fighter.staticCharge = 100;
       break;
     case 'brawler':
       // Soft flame aura so horns/headband read as fire fighter
       fighter.burnTimer = 30;
-      break;
-    case 'monk':
-      fighter.tipsyCharge = 100;
-      break;
-    case 'lotus':
-      fighter.currentAction = 'kick';
-      fighter.lightningKickFlash = 20;
       break;
     default:
       break;
@@ -1020,9 +1013,9 @@ function getFighterSilhouette(id: FighterId): FighterSilhouette {
       };
     case 'monk':
       return {
-        legWidth: 5.5, armWidth: 5.5, fistR: 5.5, shoeRx: 5.5, shoeRy: 3.2,
-        headR: 11, headYOffset: -30, shadowW: 15, hip: 0, legLen: 26,
-        eyeX: 4.5, eyeR: 2.9, feminine: false, face: 'grin',
+        legWidth: 6.5, armWidth: 6.5, fistR: 6, shoeRx: 6, shoeRy: 3.4,
+        headR: 12.5, headYOffset: -26, shadowW: 18, hip: 2, legLen: 20,
+        eyeX: 5, eyeR: 3.2, feminine: false, face: 'grin',
       };
     case 'lotus':
       return {
@@ -1137,19 +1130,19 @@ function drawFighterTorsoShape(
       ctx.roundRect(-7, bodyY + 5, 14, 5, 2);
     }, 2);
   } else if (id === 'monk') {
-    // Lean tall monkey sage — narrow torso, long silhouette
+    // Compact monkey torso — rounder belly, soft ape silhouette
     cel(mainColor, () => {
       ctx.beginPath();
-      ctx.moveTo(-8, bodyY - 18);
-      ctx.quadraticCurveTo(-10, bodyY - 2, -7, bodyY + 16);
-      ctx.quadraticCurveTo(0, bodyY + 19, 7, bodyY + 16);
-      ctx.quadraticCurveTo(10, bodyY - 2, 8, bodyY - 18);
-      ctx.quadraticCurveTo(0, bodyY - 20, -8, bodyY - 18);
+      ctx.moveTo(-11, bodyY - 14);
+      ctx.quadraticCurveTo(-13, bodyY - 2, -11, bodyY + 12);
+      ctx.quadraticCurveTo(0, bodyY + 18, 11, bodyY + 12);
+      ctx.quadraticCurveTo(13, bodyY - 2, 11, bodyY - 14);
+      ctx.quadraticCurveTo(0, bodyY - 17, -11, bodyY - 14);
       ctx.closePath();
     }, 3);
     cel(secColor, () => {
       ctx.beginPath();
-      ctx.roundRect(-6, bodyY + 6, 12, 4, 2);
+      ctx.roundRect(-7, bodyY + 4, 14, 5, 2);
     }, 2);
   } else if (id === 'lotus') {
     // Feminine hourglass — narrow shoulders, cinched waist, flared hips
@@ -1269,16 +1262,38 @@ function drawFighterHeadShape(
       ctx.ellipse(0, headY, headR - 0.5, headR + 1, 0, 0, Math.PI * 2);
     }, 3);
   } else if (id === 'monk') {
-    // Leaner monkey face — oval, not pot-cheeked
+    // Round ears perched on top of the head
+    const earY = headY - headR + 1;
     cel(mainColor, () => {
       ctx.beginPath();
-      ctx.ellipse(0, headY, headR - 0.5, headR + 1.2, 0, 0, Math.PI * 2);
+      ctx.arc(-7, earY, 6.5, 0, Math.PI * 2);
+    }, 2.5);
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.arc(7, earY, 6.5, 0, Math.PI * 2);
+    }, 2.5);
+    ctx.fillStyle = '#f5d0a9';
+    ctx.beginPath();
+    ctx.arc(-7, earY, 3.2, 0, Math.PI * 2);
+    ctx.arc(7, earY, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Round monkey skull + forward muzzle
+    cel(mainColor, () => {
+      ctx.beginPath();
+      ctx.ellipse(0, headY, headR, headR + 0.5, 0, 0, Math.PI * 2);
     }, 3);
-    // Snout pad
+    // Broad tan muzzle
     cel('#e8d5a0', () => {
       ctx.beginPath();
-      ctx.ellipse(2.5, headY + 3.5, 4.5, 3.5, 0.1, 0, Math.PI * 2);
+      ctx.ellipse(3, headY + 4, 6.5, 5, 0.08, 0, Math.PI * 2);
     }, 2);
+    // Nostrils
+    ctx.fillStyle = '#1a120e';
+    ctx.beginPath();
+    ctx.ellipse(5.5, headY + 3, 1.1, 0.7, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(8, headY + 3.2, 1.1, 0.7, 0.2, 0, Math.PI * 2);
+    ctx.fill();
   } else if (id === 'lotus') {
     // Soft feminine oval — smaller chin, fuller cheeks
     cel(mainColor, () => {
@@ -1523,14 +1538,15 @@ function drawFighterModel(
     }
   }
 
-  // Lyla: front skirt overlay so legs sit under the hem
+  // Lyla: front skirt overlay so legs sit under the hem — soft dress flutter
   if (stats.id === 'lotus') {
-    const flap = Math.sin(animTick * 0.28) * 2;
+    const flap = Math.sin(animTick * 0.22) * 4.5;
+    const sway = Math.sin(animTick * 0.15) * 2;
     cel(mainColor, () => {
       ctx.beginPath();
       ctx.moveTo(-12, bodyY + 12);
-      ctx.quadraticCurveTo(-4, bodyY + 20 + flap, 0, bodyY + 22 + flap);
-      ctx.quadraticCurveTo(4, bodyY + 20 - flap, 12, bodyY + 12);
+      ctx.quadraticCurveTo(-4 + sway, bodyY + 20 + flap, sway, bodyY + 24 + flap);
+      ctx.quadraticCurveTo(4 + sway, bodyY + 20 - flap * 0.7, 12, bodyY + 12);
       ctx.lineTo(7, bodyY + 4);
       ctx.lineTo(-7, bodyY + 4);
       ctx.closePath();
@@ -1590,7 +1606,12 @@ function drawFighterModel(
     ctx.moveTo(2, headY + 5);
     ctx.quadraticCurveTo(6, headY + 7, 9, headY + 4);
   } else if (sil.face === 'grin') {
-    ctx.arc(4, headY + 4, 4.5, 0.2, Math.PI - 0.1);
+    // Aaron: smile sits on the muzzle
+    if (stats.id === 'monk') {
+      ctx.arc(5, headY + 6.5, 3.8, 0.15, Math.PI - 0.15);
+    } else {
+      ctx.arc(4, headY + 4, 4.5, 0.2, Math.PI - 0.1);
+    }
   } else if (sil.face === 'stoic') {
     ctx.moveTo(2, headY + 6);
     ctx.lineTo(9, headY + 6);
@@ -1704,12 +1725,12 @@ function drawFighterModel(
     ctx.stroke();
     ctx.restore();
   } else if (fighter.currentAction === 'grab') {
-    strokeArms('#c9a030', () => {
+    strokeArms('#d4a820', () => {
       ctx.beginPath();
       ctx.moveTo(shoulderR - 4, shoulderY);
       ctx.lineTo(22, bodyY - 8);
     });
-    strokeArms('#c9a030', () => {
+    strokeArms('#d4a820', () => {
       ctx.beginPath();
       ctx.moveTo(shoulderR - 4, shoulderY + 6);
       ctx.lineTo(22, bodyY + 2);
@@ -2101,52 +2122,50 @@ function drawFighterAccessoriesBack(
     ctx.restore();
   } else if (id === 'monk') {
     // ==========================================
-    // DRUNKEN MONK: SAKE GOURD + JADE SASH
+    // AARON: CURLING MONKEY TAIL
     // ==========================================
     ctx.save();
-    const sashWave = Math.sin(animTick * 0.3) * 4;
-    const speedLag = Math.abs(fighter.vx) * 1.2;
+    const tailWiggle = Math.sin(animTick * 0.28) * 5;
+    const speedLag = Math.abs(fighter.vx) * 0.9;
+    const airCurl = !isGrounded ? 6 : 0;
 
-    // Jade sash tails
-    ctx.fillStyle = '#65a30d';
+    // Thick ink understroke
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 9;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(-4, bodyY + 4);
-    ctx.quadraticCurveTo(-14 - speedLag, bodyY + 10 + sashWave, -26 - speedLag, bodyY + 16 + sashWave);
-    ctx.lineTo(-22 - speedLag, bodyY + 20 + sashWave);
-    ctx.quadraticCurveTo(-12 - speedLag, bodyY + 12 + sashWave, -2, bodyY + 8);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#a3e635';
-    ctx.beginPath();
-    ctx.moveTo(-2, bodyY + 2);
-    ctx.quadraticCurveTo(-10 - speedLag, bodyY + 14 + sashWave * 0.7, -20 - speedLag, bodyY + 22 + sashWave);
-    ctx.lineTo(-16 - speedLag, bodyY + 24 + sashWave);
-    ctx.quadraticCurveTo(-8 - speedLag, bodyY + 14, 0, bodyY + 6);
-    ctx.closePath();
-    ctx.fill();
-
-    // Sake gourd on back (smaller to match lean frame)
-    ctx.fillStyle = '#854d0e';
-    ctx.strokeStyle = '#ca8a04';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(-14, bodyY - 4, 5.5, 8, -0.25, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(-4, bodyY + 10);
+    ctx.quadraticCurveTo(
+      -16 - speedLag,
+      bodyY + 18 + tailWiggle * 0.4,
+      -22 - speedLag,
+      bodyY + 8 + tailWiggle - airCurl
+    );
+    ctx.quadraticCurveTo(
+      -28 - speedLag,
+      bodyY - 6 + tailWiggle * 0.5,
+      -18 - speedLag * 0.5,
+      bodyY - 14 + tailWiggle * 0.3
+    );
     ctx.stroke();
 
-    // Gourd cork
-    ctx.fillStyle = '#d6d3d1';
+    // Fur color stroke
+    ctx.strokeStyle = fighter.stats.color;
+    ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.roundRect(-17, bodyY - 14, 4, 4, 1);
-    ctx.fill();
-
-    // Rope wrap
-    ctx.strokeStyle = '#fef08a';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-18, bodyY - 4);
-    ctx.lineTo(-10, bodyY - 2);
+    ctx.moveTo(-4, bodyY + 10);
+    ctx.quadraticCurveTo(
+      -16 - speedLag,
+      bodyY + 18 + tailWiggle * 0.4,
+      -22 - speedLag,
+      bodyY + 8 + tailWiggle - airCurl
+    );
+    ctx.quadraticCurveTo(
+      -28 - speedLag,
+      bodyY - 6 + tailWiggle * 0.5,
+      -18 - speedLag * 0.5,
+      bodyY - 14 + tailWiggle * 0.3
+    );
     ctx.stroke();
 
     ctx.restore();
@@ -2155,8 +2174,9 @@ function drawFighterAccessoriesBack(
     // LOTUS LYLA: QIPAO SKIRT FLAPS (feminine hip flare)
     // ==========================================
     ctx.save();
-    const flap = Math.sin(animTick * 0.28) * 3;
-    const speedLag = Math.abs(fighter.vx) * 0.8;
+    const flap = Math.sin(animTick * 0.22) * 6;
+    const sway = Math.sin(animTick * 0.15) * 3;
+    const speedLag = Math.abs(fighter.vx) * 0.8 + Math.abs(sway);
 
     ctx.fillStyle = fighter.stats.color;
     ctx.strokeStyle = INK;
@@ -2165,17 +2185,17 @@ function drawFighterAccessoriesBack(
     // Wide back skirt panel — part of feminine silhouette
     ctx.beginPath();
     ctx.moveTo(-10, bodyY + 12);
-    ctx.quadraticCurveTo(-18 - speedLag, bodyY + 20 + flap, -14 - speedLag, bodyY + 30 + flap);
+    ctx.quadraticCurveTo(-18 - speedLag, bodyY + 20 + flap, -16 - speedLag, bodyY + 32 + flap);
     ctx.lineTo(-2, bodyY + 18);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Front skirt panel with pink trim
-    ctx.fillStyle = '#2a4a88';
+    // Front skirt panel with darker rose trim
+    ctx.fillStyle = '#8a3060';
     ctx.beginPath();
     ctx.moveTo(8, bodyY + 12);
-    ctx.quadraticCurveTo(16 + speedLag * 0.4, bodyY + 20 - flap, 12 + speedLag * 0.3, bodyY + 30 - flap);
+    ctx.quadraticCurveTo(16 + speedLag * 0.4, bodyY + 20 - flap, 14 + speedLag * 0.3, bodyY + 32 - flap);
     ctx.lineTo(0, bodyY + 18);
     ctx.closePath();
     ctx.fill();
@@ -2185,7 +2205,7 @@ function drawFighterAccessoriesBack(
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(8, bodyY + 14);
-    ctx.quadraticCurveTo(14, bodyY + 20 - flap, 11, bodyY + 28 - flap);
+    ctx.quadraticCurveTo(14, bodyY + 20 - flap, 12, bodyY + 30 - flap);
     ctx.stroke();
 
     ctx.restore();
@@ -2361,37 +2381,6 @@ function drawFighterHeadAccessories(
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-  } else if (id === 'monk') {
-    // Slimmer monkey ears + prayer bead band
-    ctx.save();
-    ctx.fillStyle = '#a16207';
-    ctx.strokeStyle = '#ca8a04';
-    ctx.lineWidth = 1.5;
-
-    ctx.beginPath();
-    ctx.ellipse(9, headY - 2, 4, 5, 0.15, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(-9, headY - 2, 4, 5, -0.15, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // Inner ear
-    ctx.fillStyle = '#fde68a';
-    ctx.beginPath();
-    ctx.ellipse(9, headY - 2, 2, 2.5, 0.15, 0, Math.PI * 2);
-    ctx.ellipse(-9, headY - 2, 2, 2.5, -0.15, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Prayer beads across forehead
-    ctx.fillStyle = '#84cc16';
-    for (let i = -3; i <= 3; i++) {
-      ctx.beginPath();
-      ctx.arc(i * 2.8, headY - 7, 1.4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
   } else if (id === 'lotus') {
     // Twin hair buns + bangs + earring — clearly feminine
     ctx.save();
@@ -2521,11 +2510,16 @@ function drawFighterChestEmblem(
     ctx.lineTo(6, bodyY + 4);
     ctx.stroke();
   } else if (id === 'monk') {
-    ctx.fillStyle = '#7a9a40';
+    // Leaf belt knot
+    ctx.fillStyle = fighter.stats.secondaryColor;
     ctx.strokeStyle = INK;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, bodyY - 4, 3.5, 0, Math.PI * 2);
+    ctx.moveTo(0, bodyY - 2);
+    ctx.quadraticCurveTo(5, bodyY + 2, 3, bodyY + 7);
+    ctx.quadraticCurveTo(0, bodyY + 4, -3, bodyY + 7);
+    ctx.quadraticCurveTo(-5, bodyY + 2, 0, bodyY - 2);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
   } else if (id === 'lotus') {
@@ -2624,6 +2618,22 @@ function drawFighterStatusEffects(
     }
   }
 
+  // 2b. SNEAKERS SPEED BOOST: green motion streaks
+  if (fighter.speedBoostTimer && fighter.speedBoostTimer > 0) {
+    ctx.strokeStyle = 'rgba(134, 239, 172, 0.7)';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const trail = 10 + i * 7 + Math.sin(animTick * 0.35 + i) * 2;
+      ctx.globalAlpha = 0.55 - i * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(-fighter.facing * trail, bodyY - 4 + i * 5);
+      ctx.lineTo(-fighter.facing * (trail + 12), bodyY + 2 + i * 5);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // 3. STATIC OVERDRIVE 100%: Electric lightning arcs
   if (fighter.staticCharge && fighter.staticCharge >= 100) {
     ctx.strokeStyle = '#67e8f9';
@@ -2651,32 +2661,20 @@ function drawFighterStatusEffects(
     ctx.beginPath();
     ctx.roundRect(-16, bodyY - 18, 32, 54, 10);
     ctx.stroke();
-    ctx.strokeStyle = '#c9a030';
+    ctx.strokeStyle = '#d4a820';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(-16, bodyY - 18, 32, 54, 10);
     ctx.stroke();
   }
 
-  // 5. WING GLIDE: Swirling aerodynamic wind stream rings
-  if (fighter.isGliding) {
-    ctx.strokeStyle = 'rgba(186, 230, 253, 0.6)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(0, bodyY + 14, 28, 8, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+  // 5. (gliding reads from open wings — no wind ring)
 
-  // 6. TIPSY CHARGE 100%: Amber swirl / sake glow
+  // 6. TIPSY CHARGE 100%: small green spark only (no body ring)
   if (fighter.tipsyCharge && fighter.tipsyCharge >= 100) {
-    ctx.strokeStyle = '#facc15';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(163, 230, 53, 0.55)';
     ctx.beginPath();
-    ctx.ellipse(0, bodyY, 18 + Math.sin(animTick * 0.4) * 3, 24, animTick * 0.08, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(163, 230, 53, 0.35)';
-    ctx.beginPath();
-    ctx.arc(Math.sin(animTick * 0.3) * 12, headY - 8, 3, 0, Math.PI * 2);
+    ctx.arc(Math.sin(animTick * 0.3) * 10, headY - 14, 2.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -2947,6 +2945,7 @@ export function renderWorldItems(ctx: CanvasRenderingContext2D, items: WorldItem
     const item = items[idx];
     if (item.lifetime < 180 && Math.floor(item.lifetime / 8) % 2 === 0) continue;
     const def = ITEM_DEFS[item.kind];
+    const isPowerup = def.category === 'powerup';
     const bobY = Math.sin(item.bob * 0.12) * 4;
     const x = item.x;
     const y = item.y + bobY;
@@ -2958,14 +2957,18 @@ export function renderWorldItems(ctx: CanvasRenderingContext2D, items: WorldItem
     ctx.ellipse(item.x, item.y + 14, 14, 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Capsule glow
+    // Capsule glow — power-ups use a rounder, brighter orb
     ctx.shadowColor = def.glowColor;
-    ctx.shadowBlur = 16;
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.shadowBlur = isPowerup ? 22 : 16;
+    ctx.fillStyle = isPowerup ? 'rgba(15, 23, 42, 0.78)' : 'rgba(15, 23, 42, 0.92)';
     ctx.strokeStyle = def.glowColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = isPowerup ? 2.5 : 2;
     ctx.beginPath();
-    ctx.roundRect(x - 16, y - 22, 32, 34, 10);
+    if (isPowerup) {
+      ctx.arc(x, y - 5, 17, 0, Math.PI * 2);
+    } else {
+      ctx.roundRect(x - 16, y - 22, 32, 34, 10);
+    }
     ctx.fill();
     ctx.stroke();
 
@@ -2973,7 +2976,11 @@ export function renderWorldItems(ctx: CanvasRenderingContext2D, items: WorldItem
     ctx.shadowBlur = 0;
     ctx.fillStyle = `${def.glowColor}33`;
     ctx.beginPath();
-    ctx.roundRect(x - 12, y - 18, 24, 12, 6);
+    if (isPowerup) {
+      ctx.arc(x - 3, y - 10, 7, 0, Math.PI * 2);
+    } else {
+      ctx.roundRect(x - 12, y - 18, 24, 12, 6);
+    }
     ctx.fill();
 
     ctx.translate(x, y - 4);
@@ -3023,12 +3030,29 @@ export function renderProjectiles(ctx: CanvasRenderingContext2D, projectiles: Pr
       ctx.beginPath();
       ctx.roundRect(-len / 2 + 4, -1.5, len - 8, 3, 2);
       ctx.fill();
+    } else if (proj.kind === 'bolt') {
+      ctx.rotate(Math.atan2(proj.vy, proj.vx));
+      ctx.fillStyle = proj.color;
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(-6, -3.5);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-6, 3.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f5f3ff';
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(2, -1.5);
+      ctx.lineTo(2, 1.5);
+      ctx.closePath();
+      ctx.fill();
     } else if (proj.kind === 'bomb') {
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
       ctx.arc(0, 0, 9, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#fb7185';
+      ctx.strokeStyle = proj.color || '#fb7185';
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.fillStyle = '#f97316';
@@ -3158,6 +3182,132 @@ function drawItemGlyph(ctx: CanvasRenderingContext2D, kind: ItemKind, scale: num
       ctx.beginPath();
       ctx.arc(6, -16, 2.2, 0, Math.PI * 2);
       ctx.fill();
+      break;
+    }
+    case 'crossbow': {
+      ctx.fillStyle = '#6d28d9';
+      ctx.fillRect(-8, -3, 14, 6);
+      ctx.strokeStyle = '#c4b5fd';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(6, 0, 8, -1.1, 1.1);
+      ctx.stroke();
+      ctx.fillStyle = '#ddd6fe';
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(18, -2);
+      ctx.lineTo(18, 2);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'axe': {
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(-2, -2, 4, 16);
+      ctx.fillStyle = '#ef4444';
+      ctx.strokeStyle = '#fecaca';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-2, -2);
+      ctx.quadraticCurveTo(-14, -8, -12, 4);
+      ctx.lineTo(-2, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(2, -2);
+      ctx.quadraticCurveTo(14, -8, 12, 4);
+      ctx.lineTo(2, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case 'spear': {
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 14);
+      ctx.lineTo(0, -16);
+      ctx.stroke();
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(0, -22);
+      ctx.lineTo(4, -12);
+      ctx.lineTo(-4, -12);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'grenade': {
+      ctx.fillStyle = '#166534';
+      ctx.beginPath();
+      ctx.roundRect(-6, -4, 12, 14, 4);
+      ctx.fill();
+      ctx.fillStyle = '#86efac';
+      ctx.fillRect(-4, -8, 8, 4);
+      ctx.strokeStyle = '#bbf7d0';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(2, -8);
+      ctx.quadraticCurveTo(6, -14, 4, -16);
+      ctx.stroke();
+      break;
+    }
+    case 'heart': {
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath();
+      ctx.moveTo(0, 8);
+      ctx.bezierCurveTo(-12, 0, -10, -10, 0, -4);
+      ctx.bezierCurveTo(10, -10, 12, 0, 0, 8);
+      ctx.fill();
+      ctx.fillStyle = '#fda4af';
+      ctx.beginPath();
+      ctx.arc(-3, -2, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'star': {
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+        const a2 = a + Math.PI / 5;
+        const r = 10;
+        const r2 = 4;
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        ctx.lineTo(Math.cos(a2) * r2, Math.sin(a2) * r2);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'sneakers': {
+      ctx.fillStyle = '#16a34a';
+      ctx.beginPath();
+      ctx.roundRect(-10, -2, 18, 8, 3);
+      ctx.fill();
+      ctx.fillStyle = '#86efac';
+      ctx.fillRect(-10, 4, 18, 3);
+      ctx.fillStyle = '#bbf7d0';
+      ctx.beginPath();
+      ctx.arc(8, 1, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'meter_tank': {
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.roundRect(-7, -8, 14, 18, 3);
+      ctx.fill();
+      ctx.fillStyle = '#fcd34d';
+      ctx.fillRect(-4, -4, 8, 10);
+      ctx.strokeStyle = '#fef3c7';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-4, -4, 8, 10);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(-3, -12, 6, 4);
       break;
     }
   }

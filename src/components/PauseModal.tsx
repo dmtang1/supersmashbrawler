@@ -66,7 +66,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 px-4 rounded-xl border border-slate-700 transition cursor-pointer"
           >
             <Settings className="w-4 h-4 text-amber-400" />
-            Fighter & Stage Select
+            Settings
           </button>
         </div>
       </div>

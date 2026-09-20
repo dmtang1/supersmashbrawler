@@ -14,11 +14,26 @@ import {
 const ITEM_GRAVITY = 0.5;
 const ITEM_TERMINAL = 14;
 const KNOCKBACK_SCALE = 0.62;
-const MAX_WORLD_ITEMS = 1;
+const MAX_WORLD_ITEMS = 5;
 const ITEM_LIFETIME = 20 * 60; // 20s at 60fps
-export const FIRST_ITEM_DELAY = 480; // first crate ~8s into the match
-export const ITEM_SPAWN_MIN = 1080; // 18s
-export const ITEM_SPAWN_MAX = 1680; // 28s
+export const FIRST_ITEM_DELAY = 360; // first crate ~6s into the match
+export const ITEM_SPAWN_MIN = 420; // 7s
+export const ITEM_SPAWN_MAX = 780; // 13s
+export const POWERUP_HEAL_AMOUNT = 30;
+export const POWERUP_STAR_FRAMES = 180; // 3s
+export const POWERUP_SPEED_FRAMES = 360; // 6s
+export const POWERUP_SPEED_MULT = 1.4;
+export const POWERUP_METER_GAIN = 45;
+
+/** Hurtbox near the ledge lip so hanging fighters can be shot/edgeguarded. */
+function ledgeHurtbox(fighter: Fighter): { x: number; y: number } {
+  if (!fighter.ledgeHang) return { x: fighter.x, y: fighter.y };
+  const lip = fighter.ledgeHang;
+  return {
+    x: lip.side === 'left' ? lip.platformX - 6 : lip.platformX + lip.platformWidth + 6,
+    y: lip.platformY + 6,
+  };
+}
 
 export interface ItemDef {
   kind: ItemKind;
@@ -158,6 +173,142 @@ export const ITEM_DEFS: Record<ItemKind, ItemDef> = {
     activeFrames: 0,
     totalFrames: 16,
   },
+  crossbow: {
+    kind: 'crossbow',
+    name: 'Crossbow',
+    category: 'ranged',
+    uses: 6,
+    damage: 14,
+    knockbackBase: 7.5,
+    knockbackGrowth: 0.2,
+    reach: 0,
+    hitRadius: 7,
+    projectileSpeed: 18,
+    color: '#a78bfa',
+    glowColor: '#ddd6fe',
+    startupFrames: 0,
+    activeFrames: 0,
+    totalFrames: 16,
+  },
+  axe: {
+    kind: 'axe',
+    name: 'Battle Axe',
+    category: 'melee',
+    uses: 6,
+    damage: 17,
+    knockbackBase: 10,
+    knockbackGrowth: 0.24,
+    reach: 76,
+    hitRadius: 42,
+    projectileSpeed: 0,
+    color: '#ef4444',
+    glowColor: '#fecaca',
+    startupFrames: 8,
+    activeFrames: 7,
+    totalFrames: 30,
+  },
+  spear: {
+    kind: 'spear',
+    name: 'Spear',
+    category: 'melee',
+    uses: 9,
+    damage: 10,
+    knockbackBase: 6,
+    knockbackGrowth: 0.16,
+    reach: 108,
+    hitRadius: 30,
+    projectileSpeed: 0,
+    color: '#38bdf8',
+    glowColor: '#bae6fd',
+    startupFrames: 5,
+    activeFrames: 7,
+    totalFrames: 20,
+  },
+  grenade: {
+    kind: 'grenade',
+    name: 'Grenade',
+    category: 'throwable',
+    uses: 1,
+    damage: 14,
+    knockbackBase: 8.5,
+    knockbackGrowth: 0.18,
+    reach: 0,
+    hitRadius: 62,
+    projectileSpeed: 11,
+    color: '#166534',
+    glowColor: '#86efac',
+    startupFrames: 0,
+    activeFrames: 0,
+    totalFrames: 14,
+  },
+  heart: {
+    kind: 'heart',
+    name: 'Heart',
+    category: 'powerup',
+    uses: 1,
+    damage: 0,
+    knockbackBase: 0,
+    knockbackGrowth: 0,
+    reach: 0,
+    hitRadius: 0,
+    projectileSpeed: 0,
+    color: '#f43f5e',
+    glowColor: '#fda4af',
+    startupFrames: 0,
+    activeFrames: 0,
+    totalFrames: 0,
+  },
+  star: {
+    kind: 'star',
+    name: 'Star',
+    category: 'powerup',
+    uses: 1,
+    damage: 0,
+    knockbackBase: 0,
+    knockbackGrowth: 0,
+    reach: 0,
+    hitRadius: 0,
+    projectileSpeed: 0,
+    color: '#fbbf24',
+    glowColor: '#fef08a',
+    startupFrames: 0,
+    activeFrames: 0,
+    totalFrames: 0,
+  },
+  sneakers: {
+    kind: 'sneakers',
+    name: 'Sneakers',
+    category: 'powerup',
+    uses: 1,
+    damage: 0,
+    knockbackBase: 0,
+    knockbackGrowth: 0,
+    reach: 0,
+    hitRadius: 0,
+    projectileSpeed: 0,
+    color: '#22c55e',
+    glowColor: '#86efac',
+    startupFrames: 0,
+    activeFrames: 0,
+    totalFrames: 0,
+  },
+  meter_tank: {
+    kind: 'meter_tank',
+    name: 'Meter Tank',
+    category: 'powerup',
+    uses: 1,
+    damage: 0,
+    knockbackBase: 0,
+    knockbackGrowth: 0,
+    reach: 0,
+    hitRadius: 0,
+    projectileSpeed: 0,
+    color: '#f59e0b',
+    glowColor: '#fcd34d',
+    startupFrames: 0,
+    activeFrames: 0,
+    totalFrames: 0,
+  },
 };
 
 const SPAWN_TABLE: ItemKind[] = [
@@ -166,17 +317,32 @@ const SPAWN_TABLE: ItemKind[] = [
   'blaster',
   'raygun',
   'raygun',
+  'crossbow',
+  'crossbow',
   'sword',
   'sword',
   'sword',
   'beam_sword',
   'beam_sword',
+  'axe',
+  'axe',
+  'spear',
+  'spear',
   'hammer',
   'hammer',
   'bat',
   'bat',
   'bomb',
   'bomb',
+  'grenade',
+  'grenade',
+  'heart',
+  'heart',
+  'star',
+  'sneakers',
+  'sneakers',
+  'meter_tank',
+  'meter_tank',
 ];
 
 let nextItemId = 1;
@@ -204,7 +370,7 @@ export function spawnRandomItem(world: ItemWorld, stage: Stage, particles: Parti
     for (let attempt = 0; attempt < 8; attempt++) {
       const tx = plat.x + margin + Math.random() * span;
       const tooClose = world.items.some(
-        (it) => Math.abs(it.x - tx) < 58 && Math.abs((it.y + 12) - plat.y) < 90
+        (it) => Math.abs(it.x - tx) < 42 && Math.abs((it.y + 12) - plat.y) < 70
       );
       if (!tooClose) {
         spawnX = tx;
@@ -221,6 +387,7 @@ export function spawnRandomItem(world: ItemWorld, stage: Stage, particles: Parti
   const item: WorldItem = {
     id: nextItemId++,
     kind,
+    usesLeft: def.uses,
     x: spawnX,
     y: spawnY,
     vx: (Math.random() - 0.5) * 1.4,
@@ -289,18 +456,74 @@ export function tryPickupItems(world: ItemWorld, fighters: Fighter[], particles:
       const dist = Math.hypot(fighter.x - item.x, fighter.y - item.y);
       if (dist > 38) continue;
 
+      const def = ITEM_DEFS[item.kind];
+
+      // Power-ups apply instantly and never replace a held weapon
+      if (def.category === 'powerup') {
+        world.items.splice(i, 1);
+        applyPowerup(fighter, def, particles);
+        break;
+      }
+
       if (fighter.heldWeapon) {
         dropHeldWeapon(fighter, world, particles, -fighter.facing * 5, -3);
       }
 
-      const def = ITEM_DEFS[item.kind];
-      fighter.heldWeapon = { kind: item.kind, usesLeft: def.uses };
+      fighter.heldWeapon = {
+        kind: item.kind,
+        usesLeft: item.usesLeft,
+      };
       world.items.splice(i, 1);
       sound.playItemPickup();
       pushText(fighter.x, fighter.y - 42, def.name.toUpperCase(), def.glowColor, particles);
       burst(fighter.x, fighter.y - 8, def.glowColor, particles, 12);
       break;
     }
+  }
+}
+
+function applyPowerup(fighter: Fighter, def: ItemDef, particles: Particle[]) {
+  sound.playPowerupPickup();
+  burst(fighter.x, fighter.y - 8, def.glowColor, particles, 14);
+
+  switch (def.kind) {
+    case 'heart': {
+      const healed = Math.min(POWERUP_HEAL_AMOUNT, fighter.damagePercent);
+      fighter.damagePercent = Math.max(0, fighter.damagePercent - POWERUP_HEAL_AMOUNT);
+      pushText(
+        fighter.x,
+        fighter.y - 42,
+        healed > 0 ? `-${healed}%` : 'FULL!',
+        def.glowColor,
+        particles
+      );
+      break;
+    }
+    case 'star': {
+      fighter.invincibleFrames = Math.max(fighter.invincibleFrames, POWERUP_STAR_FRAMES);
+      pushText(fighter.x, fighter.y - 42, 'INVINCIBLE!', def.glowColor, particles);
+      break;
+    }
+    case 'sneakers': {
+      fighter.speedBoostTimer = Math.max(fighter.speedBoostTimer ?? 0, POWERUP_SPEED_FRAMES);
+      pushText(fighter.x, fighter.y - 42, 'SPEED UP!', def.glowColor, particles);
+      break;
+    }
+    case 'meter_tank': {
+      const before = fighter.superMeter ?? 0;
+      fighter.superMeter = Math.min(100, before + POWERUP_METER_GAIN);
+      const gained = Math.round(fighter.superMeter - before);
+      pushText(
+        fighter.x,
+        fighter.y - 42,
+        fighter.superMeter >= 100 ? 'SUPER READY!' : `+${gained} METER`,
+        def.glowColor,
+        particles
+      );
+      break;
+    }
+    default:
+      pushText(fighter.x, fighter.y - 42, def.name.toUpperCase(), def.glowColor, particles);
   }
 }
 
@@ -325,6 +548,7 @@ export function dropHeldWeapon(
   world.items.push({
     id: nextItemId++,
     kind: held.kind,
+    usesLeft: held.usesLeft,
     x: fighter.x + fighter.facing * 18,
     y: fighter.y,
     vx: tossVx,
@@ -409,7 +633,7 @@ export function useHeldWeapon(
     };
     fighter.currentAction = 'punch';
     sound.playWeaponSwing(def.kind);
-    if (def.kind === 'hammer') addScreenShake(3, 6);
+    if (def.kind === 'hammer' || def.kind === 'axe') addScreenShake(3, 6);
   }
 
   held.usesLeft -= 1;
@@ -474,7 +698,7 @@ export function updateProjectiles(
         vx: -proj.vx * 0.08,
         vy: (Math.random() - 0.5) * 0.8,
         color: proj.color,
-        size: proj.kind === 'laser' ? 3 : 2.4,
+        size: proj.kind === 'laser' ? 3 : proj.kind === 'bolt' ? 3.2 : 2.4,
         alpha: 0.7,
         decay: 0.12,
         type: 'spark',
@@ -484,7 +708,8 @@ export function updateProjectiles(
     let consumed = false;
     for (const fighter of fighters) {
       if (!canBeHitByProjectile(fighter, proj)) continue;
-      const dist = Math.hypot(proj.x - fighter.x, proj.y - fighter.y);
+      const { x: hx, y: hy } = ledgeHurtbox(fighter);
+      const dist = Math.hypot(proj.x - hx, proj.y - hy);
       const radius = proj.kind === 'bomb' ? 22 : proj.radius + fighter.width / 2;
       if (dist < radius) {
         if (proj.kind === 'bomb') {
@@ -505,19 +730,21 @@ export function updateProjectiles(
 
 function fireGun(fighter: Fighter, def: ItemDef, world: ItemWorld, particles: Particle[]) {
   const isLaser = def.kind === 'raygun';
+  const isBolt = def.kind === 'crossbow';
+  const projKind = isLaser ? 'laser' : isBolt ? 'bolt' : 'bullet';
   world.projectiles.push({
     id: nextProjId++,
-    kind: isLaser ? 'laser' : 'bullet',
+    kind: projKind,
     ownerIndex: fighter.playerIndex,
     x: fighter.x + fighter.facing * 30,
     y: fighter.y - 4,
     vx: fighter.facing * def.projectileSpeed,
-    vy: 0,
+    vy: isBolt ? -0.4 : 0,
     damage: def.damage,
     knockbackBase: def.knockbackBase,
     knockbackGrowth: def.knockbackGrowth,
     radius: def.hitRadius,
-    lifetime: isLaser ? 48 : 70,
+    lifetime: isLaser ? 48 : isBolt ? 55 : 70,
     color: def.color,
     ownerIgnoreFrames: 5,
     bounces: 0,
@@ -546,7 +773,7 @@ function throwBomb(fighter: Fighter, def: ItemDef, world: ItemWorld, particles: 
     bounces: 0,
   });
   sound.playBombThrow();
-  burst(fighter.x, fighter.y, '#fb7185', particles, 5);
+  burst(fighter.x, fighter.y, def.glowColor, particles, 5);
 }
 
 function bounceBomb(proj: Projectile, stage: Stage) {
@@ -572,25 +799,27 @@ function explodeBomb(
   addScreenShake: (intensity: number, frames: number) => void
 ) {
   sound.playBombExplode();
+  const boomColor = proj.color || '#fb7185';
   addScreenShake(10, 16);
-  burst(proj.x, proj.y, '#fb7185', particles, 18);
+  burst(proj.x, proj.y, boomColor, particles, 18);
   burst(proj.x, proj.y, '#fbbf24', particles, 10);
   particles.push({
     x: proj.x,
     y: proj.y,
     vx: 0,
     vy: 0,
-    color: '#fb7185',
+    color: boomColor,
     size: 18,
     alpha: 0.9,
     decay: 0.08,
     type: 'shockwave',
   });
-  pushText(proj.x, proj.y - 28, 'BOOM!', '#fb7185', particles);
+  pushText(proj.x, proj.y - 28, 'BOOM!', boomColor, particles);
 
   for (const fighter of fighters) {
     if (fighter.stocks <= 0 || fighter.respawnTimer > 0 || fighter.invincibleFrames > 0) continue;
-    const dist = Math.hypot(proj.x - fighter.x, proj.y - fighter.y);
+    const { x: hx, y: hy } = ledgeHurtbox(fighter);
+    const dist = Math.hypot(proj.x - hx, proj.y - hy);
     if (dist < proj.radius + fighter.width / 2) {
       const dir = fighter.x >= proj.x ? 1 : -1;
       applyProjectileHit(fighter, proj, dir as 1 | -1, particles, addScreenShake);
@@ -619,6 +848,10 @@ function applyProjectileHit(
   fighter.damagePercent += proj.damage;
   const pct = fighter.damagePercent;
   const wt = fighter.stats.weight;
+  if (fighter.ledgeHang) {
+    fighter.ledgeHang = null;
+    fighter.ledgeCooldownTimer = 30;
+  }
   fighter.vx = dir * ((proj.knockbackBase + pct * proj.knockbackGrowth) / wt) * KNOCKBACK_SCALE;
   fighter.vy = -((proj.knockbackBase * 0.5 + pct * proj.knockbackGrowth * 0.42) / wt) * KNOCKBACK_SCALE;
   fighter.hitstun = Math.floor(14 + pct * 0.18);

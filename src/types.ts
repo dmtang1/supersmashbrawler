@@ -80,8 +80,23 @@ export const SUPER_METER_PUMMEL_TAKEN = 1;
 /** Meter kept after a KO (progress isn't fully wiped). */
 export const SUPER_METER_ON_KO_KEEP = 55;
 
-export type ItemKind = 'blaster' | 'raygun' | 'sword' | 'beam_sword' | 'hammer' | 'bat' | 'bomb';
-export type ItemCategory = 'ranged' | 'melee' | 'throwable';
+export type ItemKind =
+  | 'blaster'
+  | 'raygun'
+  | 'crossbow'
+  | 'sword'
+  | 'beam_sword'
+  | 'axe'
+  | 'spear'
+  | 'hammer'
+  | 'bat'
+  | 'bomb'
+  | 'grenade'
+  | 'heart'
+  | 'star'
+  | 'sneakers'
+  | 'meter_tank';
+export type ItemCategory = 'ranged' | 'melee' | 'throwable' | 'powerup';
 
 export interface HeldWeapon {
   kind: ItemKind;
@@ -91,6 +106,8 @@ export interface HeldWeapon {
 export interface WorldItem {
   id: number;
   kind: ItemKind;
+  /** Remaining durability; preserved when tossed / dropped and re-picked up. */
+  usesLeft: number;
   x: number;
   y: number;
   vx: number;
@@ -103,7 +120,7 @@ export interface WorldItem {
 
 export interface Projectile {
   id: number;
-  kind: 'bullet' | 'laser' | 'bomb';
+  kind: 'bullet' | 'laser' | 'bolt' | 'bomb';
   ownerIndex: number;
   x: number;
   y: number;
@@ -212,6 +229,8 @@ export interface Fighter {
   freezeTimer?: number;
   /** Brief glow after firing a super. */
   superFlash?: number;
+  /** Temporary move-speed buff from Sneakers power-up. */
+  speedBoostTimer?: number;
 
   // Smash-style item / weapon currently in hand
   heldWeapon: HeldWeapon | null;
@@ -279,6 +298,9 @@ export interface CameraState {
 
 export type GameMode = 'cpu' | '2p' | 'training';
 
+/** On-screen left-hand movement control. */
+export type TouchMoveStyle = 'joystick' | 'dpad';
+
 export interface GameSettings {
   mode: GameMode;
   cpuLevel: number; // 1 to 9
@@ -293,6 +315,8 @@ export interface GameSettings {
   p4Fighter: FighterId;
   soundEnabled: boolean;
   musicEnabled: boolean;
+  /** Virtual stick vs 4-arrow D-pad for touch controls. */
+  touchMoveStyle: TouchMoveStyle;
 }
 
 export interface InputState {

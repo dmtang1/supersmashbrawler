@@ -1,5 +1,5 @@
 import { sound } from './audio';
-import { ITEM_DEFS, tossHeldWeapon, useHeldWeapon } from './items';
+import { ITEM_DEFS, tossHeldWeapon, useHeldWeapon, POWERUP_SPEED_MULT } from './items';
 import {
   AttackState,
   Fighter,
@@ -61,7 +61,7 @@ export function createInitialFighter(
   spawnPoint: { x: number; y: number },
   facing: 1 | -1
 ): Fighter {
-  // Aaron (monk): taller / skinnier frame than the default 44×64 hitbox
+  // Aaron (monk): compact monkey frame, slightly taller than default
   const isMonk = stats?.id === 'monk';
   return {
     playerIndex,
@@ -71,8 +71,8 @@ export function createInitialFighter(
     y: spawnPoint.y,
     vx: 0,
     vy: 0,
-    width: isMonk ? 34 : 44,
-    height: isMonk ? 74 : 64,
+    width: isMonk ? 36 : 44,
+    height: isMonk ? 68 : 64,
     facing,
     isGrounded: false,
     onDropThroughPlatform: false,
@@ -108,6 +108,7 @@ export function createInitialFighter(
     superMeter: 0,
     freezeTimer: 0,
     superFlash: 0,
+    speedBoostTimer: 0,
     heldWeapon: null,
   };
 }
@@ -207,6 +208,23 @@ export function updateFighterPhysics(
     fighter.superFlash--;
   }
 
+  if (fighter.speedBoostTimer && fighter.speedBoostTimer > 0) {
+    fighter.speedBoostTimer--;
+    if (fighter.speedBoostTimer % 10 === 0) {
+      particles.push({
+        x: fighter.x + (Math.random() - 0.5) * 14,
+        y: fighter.y + fighter.height / 2 - 4,
+        vx: -fighter.facing * (1 + Math.random()),
+        vy: -0.4 - Math.random(),
+        color: '#86efac',
+        size: 3,
+        alpha: 0.75,
+        decay: 0.07,
+        type: 'spark',
+      });
+    }
+  }
+
   // Soft meter floor so stalling matches still reach READY eventually
   gainSuperMeter(fighter, SUPER_METER_PASSIVE_PER_FRAME);
 
@@ -288,8 +306,9 @@ export function updateFighterPhysics(
   // Handle Ledge Hang (holding onto the platform edge)
   if (fighter.ledgeHang) {
     if (fighter.hitstun > 0) {
-      // Knocked off ledge
+      // Knocked off ledge — brief cooldown so they don't instantly re-snap
       fighter.ledgeHang = null;
+      fighter.ledgeCooldownTimer = 30;
       fighter.currentAction = 'hitstun';
       applyPhysics(fighter, stage, particles, addScreenShake);
       return checkBlastZone(fighter, opponent, stage, particles, addScreenShake);
@@ -571,10 +590,15 @@ export function updateFighterPhysics(
 
   // Horizontal movement
   const frostMult = fighter.frostbiteTimer && fighter.frostbiteTimer > 0 ? 0.6 : 1;
+  const speedBoostMult =
+    fighter.speedBoostTimer && fighter.speedBoostTimer > 0 ? POWERUP_SPEED_MULT : 1;
   const isBlocking = input.block && !fighter.ledgeHang;
   const blockMult = isBlocking ? 0.28 : 1;
   const targetSpeed =
-    (fighter.isSprinting ? fighter.stats.sprintSpeed : fighter.stats.walkSpeed) * frostMult * blockMult;
+    (fighter.isSprinting ? fighter.stats.sprintSpeed : fighter.stats.walkSpeed) *
+    frostMult *
+    speedBoostMult *
+    blockMult;
 
   if (input.left) {
     fighter.vx = -targetSpeed;
@@ -1350,6 +1374,16 @@ function checkAttackHit(
   const hitXOffset = atk.direction === 'up' || atk.direction === 'down' ? 0 : attacker.facing * reach;
   const hitRadius = isSuper ? 38 : isWeapon ? weaponDef.hitRadius : 30;
 
+  // While hanging, hurtbox sits near the lip so edgeguards / stage attacks can reach
+  let hurtX = defender.x;
+  let hurtY = defender.y;
+  if (defender.ledgeHang) {
+    const lip = defender.ledgeHang;
+    hurtX =
+      lip.side === 'left' ? lip.platformX - 6 : lip.platformX + lip.platformWidth + 6;
+    hurtY = lip.platformY + 6;
+  }
+
   // Melee weapons: capsule from near the body to the tip so point-blank swings connect
   let hitConnected = false;
   let impactX = attacker.x + hitXOffset;
@@ -1365,22 +1399,26 @@ function checkAttackHit(
     const tipY = attacker.y + hitYOffset;
     const abx = tipX - baseX;
     const aby = tipY - baseY;
-    const apx = defender.x - baseX;
-    const apy = defender.y - baseY;
+    const apx = hurtX - baseX;
+    const apy = hurtY - baseY;
     const abLen2 = abx * abx + aby * aby;
     const t = abLen2 <= 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLen2));
     impactX = baseX + abx * t;
     impactY = baseY + aby * t;
-    const dist = Math.hypot(defender.x - impactX, defender.y - impactY);
+    const dist = Math.hypot(hurtX - impactX, hurtY - impactY);
     hitConnected = dist < hitRadius + defender.width / 2;
   } else {
-    const dist = Math.hypot(impactX - defender.x, impactY - defender.y);
+    const dist = Math.hypot(impactX - hurtX, impactY - hurtY);
     hitConnected = dist < hitRadius + defender.width / 2;
   }
 
   if (hitConnected) {
     atk.hitLanded = true;
     defender.freezeTimer = 0;
+    if (defender.ledgeHang) {
+      defender.ledgeHang = null;
+      defender.ledgeCooldownTimer = 30;
+    }
 
     // Punches, kicks, and weapon swings are blocked; grabs/supers still connect through guard
     const isBlockable = atk.type === 'punch' || atk.type === 'kick';
@@ -1815,16 +1853,18 @@ export function applyLedgeMagnetism(fighter: Fighter, stage: Stage) {
   }
 
   for (const plat of stage.platforms) {
-    if (plat.isDropThrough) continue;
-
     const platLeft = plat.x;
     const platRight = plat.x + plat.width;
     const platTop = plat.y;
 
+    // Soft platforms use a tighter pull so mid-stage shelves don't yank you around.
+    const reachX = plat.isDropThrough ? 90 : 200;
+    const reachY = plat.isDropThrough ? 90 : 195;
+
     // Left Ledge magnetism: only when already close off-stage (dLeftX <= -6) and level/below ledge
     const dLeftX = fighter.x - platLeft;
     const dLeftY = fighter.y - platTop;
-    if (dLeftX >= -200 && dLeftX <= -6 && dLeftY >= -14 && dLeftY <= 195) {
+    if (dLeftX >= -reachX && dLeftX <= -6 && dLeftY >= -14 && dLeftY <= reachY) {
       if (fighter.vx < 4.0) {
         fighter.vx += 0.45;
       }
@@ -1836,7 +1876,7 @@ export function applyLedgeMagnetism(fighter: Fighter, stage: Stage) {
     // Right Ledge magnetism: only when already close off-stage (dRightX >= 6) and level/below ledge
     const dRightX = fighter.x - platRight;
     const dRightY = fighter.y - platTop;
-    if (dRightX <= 200 && dRightX >= 6 && dRightY >= -14 && dRightY <= 195) {
+    if (dRightX <= reachX && dRightX >= 6 && dRightY >= -14 && dRightY <= reachY) {
       if (fighter.vx > -4.0) {
         fighter.vx -= 0.45;
       }
@@ -1865,11 +1905,15 @@ export function checkLedgeGrab(
   }
 
   for (const plat of stage.platforms) {
-    if (plat.isDropThrough) continue; // Only solid platforms
-
     const platLeft = plat.x;
     const platRight = plat.x + plat.width;
     const platTop = plat.y;
+
+    // Soft/side platforms get a tighter sweetspot so you can still snap without
+    // grabbing from deep under the main stage through a floating shelf.
+    const sideReachX = plat.isDropThrough ? 55 : 100;
+    const sideReachY = plat.isDropThrough ? 70 : 150;
+    const underReachY = plat.isDropThrough ? 70 : 150;
 
     // --- Left Ledge corner: (platLeft, platTop) ---
     const distLeftX = fighter.x - platLeft;
@@ -1881,8 +1925,10 @@ export function checkLedgeGrab(
     // Grab from farther out than the original snap (85/130) so recovery can reach the lip.
     // 1) TO THE SIDE (offstage left)
     // 2) UNDER the corner
-    const isToSideLeft = distLeftX >= -100 && distLeftX <= 2 && distLeftY >= -16 && distLeftY <= 150;
-    const isUnderLeft = distLeftY >= 6 && distLeftY <= 150 && distLeftX >= -58 && distLeftX <= 24;
+    const isToSideLeft =
+      distLeftX >= -sideReachX && distLeftX <= 2 && distLeftY >= -16 && distLeftY <= sideReachY;
+    const isUnderLeft =
+      distLeftY >= 6 && distLeftY <= underReachY && distLeftX >= -58 && distLeftX <= 24;
 
     if (!isOnStageSurfaceLeft && (isToSideLeft || isUnderLeft)) {
       fighter.hitstun = 0;
@@ -1914,7 +1960,8 @@ export function checkLedgeGrab(
       fighter.attack = null;
       fighter.isGrounded = false;
       fighter.doubleJumpsLeft = fighter.stats.doubleJumps; // Restores all double jumps!
-      fighter.invincibleFrames = 60; // 1 full second of invincibility
+      // Brief snap intangibility only — vulnerable while hanging so edgeguards work
+      fighter.invincibleFrames = 18;
       fighter.x = platLeft - 18;
       fighter.y = platTop + 24;
       fighter.facing = 1;
@@ -1968,7 +2015,8 @@ export function checkLedgeGrab(
       fighter.attack = null;
       fighter.isGrounded = false;
       fighter.doubleJumpsLeft = fighter.stats.doubleJumps; // Restores all double jumps!
-      fighter.invincibleFrames = 60; // 1 full second of invincibility
+      // Brief snap intangibility only — vulnerable while hanging so edgeguards work
+      fighter.invincibleFrames = 18;
       fighter.x = platRight + 18;
       fighter.y = platTop + 24;
       fighter.facing = -1;
@@ -2231,6 +2279,7 @@ function eliminateFighter(
   fighter.lightningKickFlash = 0;
   fighter.freezeTimer = 0;
   fighter.superFlash = 0;
+  fighter.speedBoostTimer = 0;
   fighter.superMeter = Math.min(fighter.superMeter ?? 0, SUPER_METER_ON_KO_KEEP);
   fighter.isSprinting = false;
   fighter.sprintStamina = SPRINT_STAMINA_MAX;

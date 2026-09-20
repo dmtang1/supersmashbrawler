@@ -419,19 +419,28 @@ export function calculateCpuInput(
     return input;
   }
 
-  // Chase items when unarmed
-  if (!cpu.heldWeapon && worldItems.length > 0 && p.itemSeekRange > 0) {
+  // Chase power-ups always; chase weapons when unarmed
+  if (worldItems.length > 0 && p.itemSeekRange > 0) {
     let nearest: WorldItem | null = null;
     let nearestDist = Infinity;
     for (const item of worldItems) {
       if (item.pickupLock > 0) continue;
-      const itemDist = Math.hypot(item.x - cpu.x, item.y - cpu.y);
+      const def = ITEM_DEFS[item.kind];
+      const isPowerup = def.category === 'powerup';
+      if (!isPowerup && cpu.heldWeapon) continue;
+      // Prefer healing when battered, meter when close to super, otherwise any power-up / weapon
+      let priority = isPowerup ? 0.85 : 1;
+      if (isPowerup && item.kind === 'heart' && cpu.damagePercent > 40) priority = 0.55;
+      if (isPowerup && item.kind === 'meter_tank' && (cpu.superMeter ?? 0) < 100) priority = 0.6;
+      if (isPowerup && item.kind === 'star') priority = 0.5;
+      const itemDist = Math.hypot(item.x - cpu.x, item.y - cpu.y) * priority;
       if (itemDist < nearestDist) {
         nearest = item;
         nearestDist = itemDist;
       }
     }
-    if (nearest && nearestDist < p.itemSeekRange && (nearestDist < dist - 20 || dist > 110)) {
+    const seekDist = nearest ? Math.hypot(nearest.x - cpu.x, nearest.y - cpu.y) : Infinity;
+    if (nearest && seekDist < p.itemSeekRange && (seekDist < dist - 20 || dist > 110 || ITEM_DEFS[nearest.kind].category === 'powerup')) {
       if (nearest.x > cpu.x + 8) input.right = true;
       else if (nearest.x < cpu.x - 8) input.left = true;
       if (nearest.y < cpu.y - 40 && (cpu.isGrounded || cpu.doubleJumpsLeft > 0)) {

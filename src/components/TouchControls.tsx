@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { InputState } from '../types';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpLeft, ArrowUpRight } from 'lucide-react';
+import { InputState, TouchMoveStyle } from '../types';
 
 interface TouchControlsProps {
   visible: boolean;
+  /** Joystick drag pad or discrete 4-arrow D-pad. */
+  moveStyle?: TouchMoveStyle;
   onVirtualKey: (action: keyof InputState, isDown: boolean) => void;
   /** Clear all held virtual inputs (pause, hide, unmount). */
   onReleaseAll: () => void;
@@ -32,6 +35,7 @@ type DirKey = 'up' | 'down' | 'left' | 'right';
  */
 export const TouchControls: React.FC<TouchControlsProps> = ({
   visible,
+  moveStyle = 'joystick',
   onVirtualKey,
   onReleaseAll,
 }) => {
@@ -45,6 +49,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   const stickPointerId = useRef<number | null>(null);
   const stickOrigin = useRef<{ x: number; y: number } | null>(null);
   const actionPointers = useRef<Map<number, keyof InputState>>(new Map());
+  /** D-pad: which pointer owns which direction(s) (diagonals hold two). */
+  const dpadPointers = useRef<Map<number, DirKey[]>>(new Map());
 
   const setAction = useCallback(
     (action: keyof InputState, isDown: boolean) => {
@@ -74,7 +80,13 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     [publishUp, setAction]
   );
 
-  /** Map stick vector → discrete directions the game expects. */
+  /**
+   * Map stick vector → discrete directions the game expects.
+   *
+   * Jump (`up`) is gated harder than left/right/down: mild forward diagonals
+   * used to trip accidental jumps. Prefer the Jump face-button for hop-while-running;
+   * stick-up still works when the tilt is clearly vertical.
+   */
   const directionsFromOffset = (dx: number, dy: number, maxTravel: number): Set<DirKey> => {
     const next = new Set<DirKey>();
     const dead = maxTravel * 0.28;
@@ -83,12 +95,22 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
 
     const ax = Math.abs(dx);
     const ay = Math.abs(dy);
-    // Allow diagonals when both axes are meaningfully engaged
+
     if (ax >= dead * 0.7) next.add(dx < 0 ? 'left' : 'right');
-    if (ay >= dead * 0.7) next.add(dy < 0 ? 'up' : 'down');
+
+    // Down stays relatively easy (crouch / drop-through).
+    if (dy > 0 && ay >= dead * 0.7) next.add('down');
+
+    // Up (jump): require deeper travel + a steeper-than-~45° angle when also
+    // holding left/right, so slight upward drift while running doesn't hop.
+    const upMin = maxTravel * 0.48;
+    const steepEnough = ax < dead * 0.55 || ay >= ax * 1.15;
+    if (dy < 0 && ay >= upMin && steepEnough) next.add('up');
+
     if (next.size === 0) {
       if (ax >= ay) next.add(dx < 0 ? 'left' : 'right');
-      else next.add(dy < 0 ? 'up' : 'down');
+      else if (dy > 0) next.add('down');
+      // Do not fall back to stick-up from a weak vertical bias — use Jump button.
     }
     return next;
   };
@@ -125,6 +147,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     stickOrigin.current = null;
     jumpButtonHeld.current = false;
     actionPointers.current.clear();
+    dpadPointers.current.clear();
     dirsHeld.current = new Set();
     setStickOffset({ x: 0, y: 0 });
     setStickActive(false);
@@ -139,6 +162,16 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       releaseAll();
     }
   }, [visible, releaseAll]);
+
+  // Clear movement when switching joystick ↔ D-pad so no stuck directions linger.
+  useEffect(() => {
+    stickPointerId.current = null;
+    stickOrigin.current = null;
+    dpadPointers.current.clear();
+    setStickOffset({ x: 0, y: 0 });
+    setStickActive(false);
+    syncDirections(new Set());
+  }, [moveStyle, syncDirections]);
 
   // Release stuck inputs only on unmount (not when releaseAll identity changes)
   useEffect(() => {
@@ -231,8 +264,47 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     },
   });
 
+  const rebuildDpadDirs = () => {
+    const next = new Set<DirKey>();
+    dpadPointers.current.forEach((dirs) => {
+      dirs.forEach((dir) => next.add(dir));
+    });
+    syncDirections(next);
+  };
+
+  const bindDpad = (...dirs: DirKey[]) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      dpadPointers.current.set(e.pointerId, dirs);
+      rebuildDpadDirs();
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (dpadPointers.current.has(e.pointerId)) {
+        dpadPointers.current.delete(e.pointerId);
+        rebuildDpadDirs();
+      }
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    },
+    onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (dpadPointers.current.has(e.pointerId)) {
+        dpadPointers.current.delete(e.pointerId);
+        rebuildDpadDirs();
+      }
+    },
+  });
+
   const actActive = (a: keyof InputState) =>
     a === 'up' ? jumpButtonHeld.current : !!pressed[a];
+
+  const dirActive = (dir: DirKey) => !!pressed[dir];
+
+  const diagActive = (a: DirKey, b: DirKey) => !!pressed[a] && !!pressed[b];
 
   return (
     <div
@@ -245,119 +317,297 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       }}
       aria-hidden={!visible}
     >
-      {/* LEFT: virtual joystick only — keeps left thumb free for movement */}
+      {/* LEFT: joystick or D-pad (cardinals + up-diagonals) */}
       <div className="pointer-events-none absolute bottom-2 left-2 sm:bottom-3 sm:left-3">
-        <div
-          id="touch-joystick"
-          role="slider"
-          aria-label="Movement joystick"
-          className="pointer-events-auto relative touch-none select-none rounded-full"
-          style={{ width: 'min(42vw, 168px)', height: 'min(42vw, 168px)' }}
-          onPointerDown={onStickPointerDown}
-          onPointerMove={onStickPointerMove}
-          onPointerUp={onStickPointerEnd}
-          onPointerCancel={onStickPointerEnd}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          {/* Base */}
+        {moveStyle === 'dpad' ? (
           <div
-            className={`absolute inset-0 rounded-full border backdrop-blur-[2px] shadow-[0_4px_20px_rgba(0,0,0,0.35)] transition-colors ${
-              stickActive
-                ? 'bg-slate-950/45 border-sky-400/40'
-                : 'bg-slate-950/35 border-white/15'
-            }`}
-          />
-          {/* Subtle ring guide */}
-          <div className="absolute inset-[18%] rounded-full border border-white/10" />
-
-          {/* Movable knob */}
-          <div
-            className={`absolute left-1/2 top-1/2 h-[38%] w-[38%] rounded-full border shadow-[0_2px_12px_rgba(0,0,0,0.45)] ${
-              stickActive
-                ? 'bg-sky-400/70 border-sky-100/80'
-                : 'bg-white/25 border-white/35'
-            }`}
+            id="touch-dpad"
+            className="pointer-events-none relative"
             style={{
-              transform: `translate(calc(-50% + ${stickOffset.x}px), calc(-50% + ${stickOffset.y}px))`,
-              transition: stickActive ? 'none' : 'transform 120ms ease-out',
+              width: `${DPAD.padW}rem`,
+              height: `${DPAD.padH}rem`,
             }}
-          />
-        </div>
+            aria-label="Movement D-pad"
+          >
+            <DpadButton
+              id="touch-dpad-up-left"
+              label="Up Left"
+              active={diagActive('up', 'left')}
+              size="sm"
+              style={dpadCenter(DPAD.upLeft.x, DPAD.upLeft.y)}
+              {...bindDpad('up', 'left')}
+            >
+              <ArrowUpLeft className="w-5 h-5" strokeWidth={2.75} />
+            </DpadButton>
+            <DpadButton
+              id="touch-dpad-up-right"
+              label="Up Right"
+              active={diagActive('up', 'right')}
+              size="sm"
+              style={dpadCenter(DPAD.upRight.x, DPAD.upRight.y)}
+              {...bindDpad('up', 'right')}
+            >
+              <ArrowUpRight className="w-5 h-5" strokeWidth={2.75} />
+            </DpadButton>
+            <DpadButton
+              id="touch-dpad-up"
+              label="Up"
+              active={dirActive('up') && !dirActive('left') && !dirActive('right')}
+              style={dpadCenter(DPAD.up.x, DPAD.up.y)}
+              {...bindDpad('up')}
+            >
+              <ArrowUp className="w-6 h-6" strokeWidth={2.75} />
+            </DpadButton>
+            <DpadButton
+              id="touch-dpad-left"
+              label="Left"
+              active={dirActive('left') && !dirActive('up')}
+              style={dpadCenter(DPAD.left.x, DPAD.left.y)}
+              {...bindDpad('left')}
+            >
+              <ArrowLeft className="w-6 h-6" strokeWidth={2.75} />
+            </DpadButton>
+            <DpadButton
+              id="touch-dpad-right"
+              label="Right"
+              active={dirActive('right') && !dirActive('up')}
+              style={dpadCenter(DPAD.right.x, DPAD.right.y)}
+              {...bindDpad('right')}
+            >
+              <ArrowRight className="w-6 h-6" strokeWidth={2.75} />
+            </DpadButton>
+            <DpadButton
+              id="touch-dpad-down"
+              label="Down"
+              active={dirActive('down')}
+              style={dpadCenter(DPAD.down.x, DPAD.down.y)}
+              {...bindDpad('down')}
+            >
+              <ArrowDown className="w-6 h-6" strokeWidth={2.75} />
+            </DpadButton>
+          </div>
+        ) : (
+          <div
+            id="touch-joystick"
+            role="slider"
+            aria-label="Movement joystick"
+            className="pointer-events-auto relative touch-none select-none rounded-full"
+            style={{ width: 'min(42vw, 168px)', height: 'min(42vw, 168px)' }}
+            onPointerDown={onStickPointerDown}
+            onPointerMove={onStickPointerMove}
+            onPointerUp={onStickPointerEnd}
+            onPointerCancel={onStickPointerEnd}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {/* Base */}
+            <div
+              className={`absolute inset-0 rounded-full border backdrop-blur-[2px] shadow-[0_4px_20px_rgba(0,0,0,0.35)] transition-colors ${
+                stickActive
+                  ? 'bg-slate-950/45 border-sky-400/40'
+                  : 'bg-slate-950/35 border-white/15'
+              }`}
+            />
+            {/* Subtle ring guide */}
+            <div className="absolute inset-[18%] rounded-full border border-white/10" />
+
+            {/* Movable knob */}
+            <div
+              className={`absolute left-1/2 top-1/2 h-[38%] w-[38%] rounded-full border shadow-[0_2px_12px_rgba(0,0,0,0.45)] ${
+                stickActive
+                  ? 'bg-sky-400/70 border-sky-100/80'
+                  : 'bg-white/25 border-white/35'
+              }`}
+              style={{
+                transform: `translate(calc(-50% + ${stickOffset.x}px), calc(-50% + ${stickOffset.y}px))`,
+                transition: stickActive ? 'none' : 'transform 120ms ease-out',
+              }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* RIGHT: actions in thumb arc — sprint sits with combat buttons for easier reach */}
-      <div className="pointer-events-none absolute bottom-2 right-2 sm:bottom-3 sm:right-3 flex flex-col items-end gap-2">
-        <div className="pointer-events-none flex items-end gap-2">
-          <div className="flex flex-col gap-2">
-            <ActionButton
-              id="touch-special"
-              label="Super"
-              active={actActive('special')}
-              tone="amber"
-              size="md"
-              {...bindAction('special')}
-            />
-            <ActionButton
-              id="touch-sprint"
-              label="Sprint"
-              active={actActive('sprint')}
-              tone="violet"
-              size="md"
-              {...bindAction('sprint')}
-            />
-            <ActionButton
-              id="touch-grab"
-              label="Grab"
-              active={actActive('grab')}
-              tone="sky"
-              size="md"
-              {...bindAction('grab')}
-            />
-            <ActionButton
-              id="touch-kick"
-              label="Kick"
-              active={actActive('kick')}
-              tone="rose"
-              size="md"
-              {...bindAction('kick')}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2 items-center">
-            <div className="flex gap-2">
-              <ActionButton
-                id="touch-block"
-                label="Block"
-                active={actActive('block')}
-                tone="cyan"
-                size="md"
-                {...bindAction('block')}
-              />
-              <ActionButton
-                id="touch-jump"
-                label="Jump"
-                active={actActive('up')}
-                tone="sky"
-                size="md"
-                {...bindAction('up')}
-              />
-            </div>
-            <ActionButton
-              id="touch-punch"
-              label="Punch"
-              active={actActive('punch')}
-              tone="amber"
-              size="lg"
-              {...bindAction('punch')}
-            />
-          </div>
-        </div>
+      {/*
+        RIGHT: Kick/Punch thumb rest + arc satellites.
+        Positions use rem centers with a fixed gap so buttons never overlap.
+      */}
+      <div
+        className="pointer-events-none absolute bottom-1 right-1 sm:bottom-2 sm:right-2"
+        style={{
+          width: 'min(72vw, 17.75rem)',
+          height: 'min(60vw, 15.25rem)',
+        }}
+      >
+        <ActionButton
+          id="touch-special"
+          label="Super"
+          active={actActive('special')}
+          tone="amber"
+          size="md"
+          style={btnCenter(BTN.super.r, BTN.super.b)}
+          {...bindAction('special')}
+        />
+        <ActionButton
+          id="touch-sprint"
+          label="Sprint"
+          active={actActive('sprint')}
+          tone="violet"
+          size="md"
+          style={btnCenter(BTN.sprint.r, BTN.sprint.b)}
+          {...bindAction('sprint')}
+        />
+        <ActionButton
+          id="touch-grab"
+          label="Grab"
+          active={actActive('grab')}
+          tone="sky"
+          size="md"
+          style={btnCenter(BTN.grab.r, BTN.grab.b)}
+          {...bindAction('grab')}
+        />
+        <ActionButton
+          id="touch-jump"
+          label="Jump"
+          active={actActive('up')}
+          tone="sky"
+          size="lg"
+          style={btnCenter(BTN.jump.r, BTN.jump.b)}
+          {...bindAction('up')}
+        />
+        <ActionButton
+          id="touch-block"
+          label="Block"
+          active={actActive('block')}
+          tone="cyan"
+          size="lg"
+          style={btnCenter(BTN.block.r, BTN.block.b)}
+          {...bindAction('block')}
+        />
+        <ActionButton
+          id="touch-kick"
+          label="Kick"
+          active={actActive('kick')}
+          tone="rose"
+          size="xl"
+          style={btnCenter(BTN.kick.r, BTN.kick.b)}
+          {...bindAction('kick')}
+        />
+        <ActionButton
+          id="touch-punch"
+          label="Punch"
+          active={actActive('punch')}
+          tone="amber"
+          size="xl"
+          style={btnCenter(BTN.punch.r, BTN.punch.b)}
+          {...bindAction('punch')}
+        />
       </div>
     </div>
   );
 };
 
+/** Center a D-pad button from the pad's top-left (rem). */
+function dpadCenter(xRem: number, yRem: number): React.CSSProperties {
+  return {
+    position: 'absolute',
+    left: `${xRem}rem`,
+    top: `${yRem}rem`,
+    transform: 'translate(-50%, -50%)',
+  };
+}
+
+/**
+ * D-pad geometry: adjacent buttons keep GAP clear air (not just opposite ones).
+ * Cardinals use a wider cross spacing so corners don't collide; diagonals sit further out.
+ */
+const DPAD = (() => {
+  const MD = 3.5;
+  const SM = 3.0;
+  const GAP = 0.85;
+  // Adjacent cardinals need center distance >= MD + GAP
+  const cardinalOffset = (MD + GAP) / Math.SQRT2;
+  // Diagonals clear of neighboring cardinals
+  const diagNeed = SM / 2 + MD / 2 + GAP;
+  let diagR = cardinalOffset + 0.35;
+  while (Math.hypot(diagR, diagR - cardinalOffset) < diagNeed) {
+    diagR += 0.05;
+  }
+
+  const cx = SM / 2 + diagR;
+  const cy = SM / 2 + diagR;
+
+  const upLeft = { x: cx - diagR, y: cy - diagR };
+  const upRight = { x: cx + diagR, y: cy - diagR };
+  const up = { x: cx, y: cy - cardinalOffset };
+  const left = { x: cx - cardinalOffset, y: cy };
+  const right = { x: cx + cardinalOffset, y: cy };
+  const down = { x: cx, y: cy + cardinalOffset };
+
+  const padW = upRight.x + SM / 2;
+  const padH = down.y + MD / 2;
+
+  return { MD, SM, padW, padH, upLeft, upRight, up, left, right, down };
+})();
+
+/** Button diameters in rem — must match ActionButton size classes. */
+const SZ = { xl: 5.5, lg: 4.25, md: 3.6 } as const;
+/** Clear air between nearest edges (mis-tap buffer). */
+const GAP = 0.75;
+
+const half = (d: number) => d / 2;
+
+/** Center position from the bottom-right corner of the cluster. */
+function btnCenter(rightRem: number, bottomRem: number): React.CSSProperties {
+  return {
+    position: 'absolute',
+    right: `${rightRem}rem`,
+    bottom: `${bottomRem}rem`,
+    transform: 'translate(50%, 50%)',
+  };
+}
+
+/**
+ * Layout (centers), thumb rest at bottom-right:
+ *
+ *        Super
+ *     Sprint
+ *  Grab   Block  Jump
+ *       Kick  Punch
+ *
+ * Each neighbor is at least GAP rem apart edge-to-edge.
+ */
+const BTN = (() => {
+  const punch = { r: half(SZ.xl), b: half(SZ.xl) };
+  const kick = {
+    r: half(SZ.xl) + SZ.xl + GAP,
+    b: half(SZ.xl),
+  };
+  // Jump / Block sit one clear gap above Punch / Kick
+  const jump = {
+    r: punch.r,
+    b: half(SZ.xl) + half(SZ.xl) + half(SZ.lg) + GAP,
+  };
+  const block = {
+    r: kick.r,
+    b: jump.b,
+  };
+  // Outer thumb arc left of Kick: Grab → Sprint → Super
+  const grab = {
+    r: kick.r + half(SZ.xl) + half(SZ.md) + GAP,
+    b: half(SZ.xl),
+  };
+  const sprint = {
+    r: grab.r + 0.35,
+    b: grab.b + SZ.md + GAP,
+  };
+  const special = {
+    r: kick.r + half(SZ.xl) + half(SZ.md) + GAP * 0.35,
+    b: block.b + half(SZ.lg) + half(SZ.md) + GAP,
+  };
+  return { punch, kick, jump, block, grab, sprint, super: special };
+})();
+
 type ActionTone = 'amber' | 'rose' | 'sky' | 'cyan' | 'violet';
+type ActionSize = 'md' | 'lg' | 'xl';
 
 function ActionButton({
   id,
@@ -365,13 +615,17 @@ function ActionButton({
   active,
   tone,
   size,
+  className = '',
+  style,
   ...handlers
 }: {
   id: string;
   label: string;
   active: boolean;
   tone: ActionTone;
-  size: 'md' | 'lg';
+  size: ActionSize;
+  className?: string;
+  style?: React.CSSProperties;
 } & React.HTMLAttributes<HTMLButtonElement>) {
   const tones: Record<ActionTone, { idle: string; on: string }> = {
     amber: {
@@ -396,23 +650,65 @@ function ActionButton({
     },
   };
 
-  const dims =
-    size === 'lg'
-      ? 'min-w-[4.75rem] min-h-[4.75rem] text-sm px-3'
-      : 'min-w-[3.25rem] min-h-[3.25rem] text-[10px] px-2';
+  // Diameters must stay in sync with SZ above.
+  const dims: Record<ActionSize, string> = {
+    xl: 'w-[5.5rem] h-[5.5rem] min-w-[5.5rem] min-h-[5.5rem] text-sm px-2',
+    lg: 'w-[4.25rem] h-[4.25rem] min-w-[4.25rem] min-h-[4.25rem] text-xs px-2',
+    md: 'w-[3.6rem] h-[3.6rem] min-w-[3.6rem] min-h-[3.6rem] text-[11px] px-1.5',
+  };
 
   return (
     <button
       id={id}
       type="button"
       aria-label={label}
-      className={`pointer-events-auto touch-none select-none rounded-full border font-black uppercase tracking-wide backdrop-blur-[2px] shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-colors ${dims} ${
+      style={style}
+      className={`pointer-events-auto touch-none select-none rounded-full border font-black uppercase tracking-wide backdrop-blur-[2px] shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-colors flex items-center justify-center leading-tight ${dims[size]} ${
         active ? tones[tone].on : tones[tone].idle
-      }`}
+      } ${className}`}
       onContextMenu={(e) => e.preventDefault()}
       {...handlers}
     >
       {label}
+    </button>
+  );
+}
+
+function DpadButton({
+  id,
+  label,
+  active,
+  size = 'md',
+  className = '',
+  style,
+  children,
+  ...handlers
+}: {
+  id: string;
+  label: string;
+  active: boolean;
+  size?: 'sm' | 'md';
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+} & React.HTMLAttributes<HTMLButtonElement>) {
+  // Diameters must stay in sync with DPAD.MD / DPAD.SM
+  const dims = size === 'sm' ? 'w-[3rem] h-[3rem]' : 'w-[3.5rem] h-[3.5rem]';
+  return (
+    <button
+      id={id}
+      type="button"
+      aria-label={label}
+      style={style}
+      className={`pointer-events-auto touch-none select-none rounded-2xl border backdrop-blur-[2px] shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-colors flex items-center justify-center ${dims} ${
+        active
+          ? 'bg-sky-400/75 border-sky-100 text-slate-950'
+          : 'bg-slate-950/40 border-white/20 text-sky-100'
+      } ${className}`}
+      onContextMenu={(e) => e.preventDefault()}
+      {...handlers}
+    >
+      {children}
     </button>
   );
 }

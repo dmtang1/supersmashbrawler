@@ -918,6 +918,35 @@ class SoundEngine {
     this.playNoiseBurst(0.12, 0.28, 900);
   }
 
+  public playPowerupPickup() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(660, now);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+    const osc2 = this.ctx.createOscillator();
+    const gain2 = this.ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(990, now + 0.05);
+    osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.16);
+    gain2.gain.setValueAtTime(0.14, now + 0.05);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    osc2.connect(gain2);
+    gain2.connect(this.ctx.destination);
+    osc2.start(now + 0.05);
+    osc2.stop(now + 0.22);
+  }
+
   public playGunshot() {
     if (!this.enabled) return;
     this.initCtx();
@@ -960,7 +989,7 @@ class SoundEngine {
     this.initCtx();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    const heavy = kind === 'hammer' || kind === 'bat';
+    const heavy = kind === 'hammer' || kind === 'bat' || kind === 'axe';
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = heavy ? 'sawtooth' : 'triangle';
@@ -980,7 +1009,7 @@ class SoundEngine {
     this.initCtx();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    const heavy = kind === 'hammer' || kind === 'bat';
+    const heavy = kind === 'hammer' || kind === 'bat' || kind === 'axe';
     this.playNoiseBurst(heavy ? 0.1 : 0.07, heavy ? 0.55 : 0.4, heavy ? 420 : 900);
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();

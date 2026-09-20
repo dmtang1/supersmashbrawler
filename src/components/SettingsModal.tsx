@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Play, Sliders, Shield, MapPin, Bot, Users } from 'lucide-react';
+import { X, Play, Sliders, Shield, MapPin, Bot, Users, Gamepad2, Circle, ArrowUp } from 'lucide-react';
 import { FighterId, GameSettings } from '../types';
 import { FIGHTERS } from '../fighters';
 import { RANDOM_STAGE_ID, STAGES } from '../stages';
@@ -10,6 +10,7 @@ interface SettingsModalProps {
   settings: GameSettings;
   onUpdateSettings: (newSettings: GameSettings) => void;
   onStartMatch: () => void;
+  applyLabel?: string;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -18,6 +19,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onUpdateSettings,
   onStartMatch,
+  applyLabel = 'Done',
 }) => {
   if (!isOpen) return null;
 
@@ -40,12 +42,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Sliders className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-white">Battle Setup & Character Select</h2>
-            <p className="text-xs text-slate-400">Configure battle mode, fighters, stages, and CPU strength</p>
+            <h2 className="text-xl font-black tracking-tight text-white">Settings</h2>
+            <p className="text-xs text-slate-400">Touch controls, battle mode, fighters, stages, and CPU</p>
           </div>
         </div>
 
         <div className="space-y-5">
+          {/* Touch movement style */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block flex items-center gap-1.5">
+              <Gamepad2 className="w-3.5 h-3.5 text-sky-400" />
+              Touch Movement Pad
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                id="touch-move-joystick-btn"
+                type="button"
+                onClick={() => onUpdateSettings({ ...settings, touchMoveStyle: 'joystick' })}
+                className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition cursor-pointer ${
+                  settings.touchMoveStyle === 'joystick'
+                    ? 'bg-sky-500/20 border-sky-400 text-sky-200'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <span className="flex items-center gap-2 font-bold text-xs text-white">
+                  <Circle className="w-4 h-4 text-sky-400" />
+                  Joystick
+                </span>
+                <span className="text-[10px] text-slate-400 leading-snug">
+                  Drag stick for movement. Jump with the Jump button (or a steep stick-up).
+                </span>
+              </button>
+              <button
+                id="touch-move-dpad-btn"
+                type="button"
+                onClick={() => onUpdateSettings({ ...settings, touchMoveStyle: 'dpad' })}
+                className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition cursor-pointer ${
+                  settings.touchMoveStyle === 'dpad'
+                    ? 'bg-sky-500/20 border-sky-400 text-sky-200'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <span className="flex items-center gap-2 font-bold text-xs text-white">
+                  <ArrowUp className="w-4 h-4 text-sky-400" />
+                  4-Arrow D-Pad
+                </span>
+                <span className="text-[10px] text-slate-400 leading-snug">
+                  Separate Up / Down / Left / Right buttons — no accidental diagonal jumps.
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* Game Mode Selection */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block">
@@ -296,7 +344,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-slate-950 font-black px-6 py-2.5 rounded-xl shadow-lg transition cursor-pointer"
           >
             <Play className="w-4 h-4 fill-slate-950" />
-            Apply & Start Fight!
+            {applyLabel}
           </button>
         </div>
       </div>

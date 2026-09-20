@@ -397,7 +397,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         itemSpawnTimerRef.current--;
         if (itemSpawnTimerRef.current <= 0) {
-          spawnRandomItem(itemWorldRef.current, stageRef.current, particlesRef.current);
+          const world = itemWorldRef.current;
+          const stage = stageRef.current;
+          const particles = particlesRef.current;
+          spawnRandomItem(world, stage, particles);
+          // Chance to drop a second item so weapons & power-ups can stack on stage
+          if (Math.random() < 0.55) {
+            spawnRandomItem(world, stage, particles);
+          }
           itemSpawnTimerRef.current = randomSpawnDelay();
         }
 

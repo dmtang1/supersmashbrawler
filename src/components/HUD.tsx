@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Smartphone,
   MoreHorizontal,
+  Settings,
 } from 'lucide-react';
 import { Fighter, GameSettings, InputState, PERCENT_KO_THRESHOLD, SPRINT_STAMINA_MAX, SUPER_METER_MAX } from '../types';
 import { ITEM_DEFS } from '../items';
@@ -51,6 +52,7 @@ export const HUD: React.FC<HUDProps> = ({
   onRestart,
   onToggleSound,
   onOpenControls,
+  onOpenSettings,
   onBackToSelect,
   activeKeys,
   isTouchDevice,
@@ -265,6 +267,7 @@ export const HUD: React.FC<HUDProps> = ({
         {onVirtualKey && onReleaseAllVirtual && (
           <TouchControls
             visible={!!isTouchDevice && !!showTouchControls && !isPaused}
+            moveStyle={settings.touchMoveStyle}
             onVirtualKey={onVirtualKey}
             onReleaseAll={onReleaseAllVirtual}
           />
@@ -405,7 +408,7 @@ export const HUD: React.FC<HUDProps> = ({
                     <strong>Throws:</strong> While holding (<code className="text-amber-300 font-bold">V</code>), press <code className="text-amber-300 font-bold">W/S/A/D</code>.
                   </li>
                   <li>
-                    <strong>Items:</strong> Walk into crates. <code className="text-amber-300 font-bold">Space</code> uses, <code className="text-sky-300 font-bold">V</code> tosses.
+                    <strong>Items:</strong> Walk into crates &amp; orbs. Weapons: <code className="text-amber-300 font-bold">Space</code> uses, <code className="text-sky-300 font-bold">V</code> tosses. Power-ups apply on contact.
                   </li>
                 </ul>
               </div>
@@ -487,6 +490,18 @@ export const HUD: React.FC<HUDProps> = ({
                     className="p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-sky-300 border border-white/10 transition cursor-pointer"
                   >
                     <Gamepad2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    id="header-settings-btn"
+                    onClick={() => {
+                      onOpenSettings();
+                      setShowMenu(false);
+                    }}
+                    title="Settings"
+                    className="p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-amber-300 border border-white/10 transition cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
                   </button>
 
                   <button

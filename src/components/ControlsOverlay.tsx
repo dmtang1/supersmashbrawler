@@ -11,8 +11,8 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))]">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-2xl w-full p-6 shadow-2xl text-slate-100 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))]">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-2xl w-full p-6 shadow-2xl text-slate-100 relative my-auto">
         <button
           id="close-controls-modal-btn"
           onClick={onClose}
@@ -146,14 +146,14 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
           </p>
         </div>
 
-        {/* Item Drops */}
+        {/* Weapons & Power-Ups */}
         <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-950/50 to-slate-900 border border-amber-500/40 rounded-xl text-xs">
           <div className="flex items-center gap-2 font-bold text-amber-300 mb-1">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span>Item Drops Every Match</span>
+            <span>Weapons &amp; Power-Ups</span>
           </div>
           <p className="text-slate-300 text-[11px] leading-relaxed">
-            Weapon crates fall onto the stage throughout the fight — blasters, ray guns, swords, beam swords, hammers, home-run bats, and bombs. Walk into a crate to pick it up. Punch uses the weapon; grab (<span className="text-sky-300 font-bold">V</span>) tosses it away. Hold <span className="text-cyan-300 font-bold">B</span> to block punches, kicks, and shots from the front.
+            Weapon crates and power-up orbs fall onto the stage throughout the fight — blasters, ray guns, crossbows, swords, beam swords, axes, spears, hammers, bats, bombs, grenades, plus Hearts, Stars, Sneakers, and Meter Tanks. Walk into a drop to pick it up (power-ups apply instantly). Punch uses a weapon; grab (<span className="text-sky-300 font-bold">V</span>) tosses it away. Hold <span className="text-cyan-300 font-bold">B</span> to block punches, kicks, and shots from the front.
           </p>
         </div>
 
@@ -164,7 +164,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
             <span>Ledge Grab & Recovery (Sweetspot)</span>
           </div>
           <p className="text-slate-300 text-[11px] leading-relaxed">
-            When recovering from off-stage, jumping near any platform corner automatically snaps you onto the edge! Grabbing the ledge restores all your double jumps and grants invincibility frames.
+            When recovering from off-stage, jumping near any platform corner automatically snaps you onto the edge! Grabbing the ledge restores all your double jumps and grants a brief invincibility window — after that you can be edgeguarded.
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 font-mono text-[11px]">
             <div className="bg-slate-950/70 px-2 py-1 rounded border border-slate-800 text-sky-200">
@@ -194,7 +194,7 @@ export const ControlsOverlay: React.FC<ControlsOverlayProps> = ({ isOpen, onClos
 
         <div className="mt-4 p-3 bg-slate-800/50 border border-slate-700/60 rounded-xl text-xs text-slate-300">
           <span className="text-sky-300 font-bold">Touch / iPad:</span> On phones and tablets, translucent pads appear in the
-          lower corners (left = joystick, right = sprint / jump / attacks / block). They stay out of the center of the arena.
+          lower corners (left = joystick or 4-arrow D-pad from Settings; right = Punch/Kick cluster). They stay out of the center of the arena.
           Use the phone icon in the header to hide them if you pair a keyboard or controller.
         </div>
 
