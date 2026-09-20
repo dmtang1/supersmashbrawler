@@ -9,13 +9,12 @@ import {
   Shield,
   Zap,
   Swords,
-  Sparkles,
-  Flame,
   HelpCircle,
   ArrowLeft,
   X,
   ChevronLeft,
   Smartphone,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Fighter, GameSettings, InputState, PERCENT_KO_THRESHOLD, SPRINT_STAMINA_MAX, SUPER_METER_MAX } from '../types';
 import { ITEM_DEFS } from '../items';
@@ -61,8 +60,8 @@ export const HUD: React.FC<HUDProps> = ({
   onReleaseAllVirtual,
   children,
 }) => {
-  // Minimized by default so the arena has 100% full screen space
   const [showSidePanel, setShowSidePanel] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -71,510 +70,285 @@ export const HUD: React.FC<HUDProps> = ({
   };
 
   const getPercentColor = (pct: number) => {
-    if (pct < 40) return 'text-emerald-300';
+    if (pct < 40) return 'text-white';
     if (pct < 80) return 'text-amber-300';
     if (pct < 130) return 'text-orange-400';
-    return 'text-red-500 font-black drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]';
+    return 'text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.85)]';
   };
 
   const getHealthBarGradient = (pct: number) => {
     if (pct < 40) return 'from-emerald-500 to-teal-400';
     if (pct < 80) return 'from-yellow-400 to-amber-500';
     if (pct < 120) return 'from-amber-500 to-orange-500';
-    return 'from-rose-500 via-red-500 to-red-600 animate-pulse';
+    return 'from-rose-500 via-red-500 to-red-600';
   };
 
   const getMeterFillWidth = (pct: number) => {
     return Math.min(100, Math.max(4, (pct / PERCENT_KO_THRESHOLD) * 100));
   };
 
-  const renderSprintBar = (fighter: Fighter, align: 'left' | 'right') => {
-    const pct = Math.min(100, Math.max(0, ((fighter.sprintStamina ?? SPRINT_STAMINA_MAX) / SPRINT_STAMINA_MAX) * 100));
-    const depleted = pct <= 0.5;
-    const low = pct < 22;
+  const renderLabeledBar = (
+    label: string,
+    fill: React.ReactNode,
+    align: 'left' | 'right',
+    labelClass: string,
+    barExtraClass = ''
+  ) => (
+    <div className={`flex items-center gap-1.5 w-full ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+      <span
+        className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider shrink-0 w-11 sm:w-12 ${
+          align === 'right' ? 'text-left' : 'text-right'
+        } ${labelClass}`}
+        style={{ textShadow: '0 1px 2px rgba(0,0,0,0.95)' }}
+      >
+        {label}
+      </span>
+      <div
+        className={`flex-1 h-2.5 sm:h-3.5 bg-black/55 rounded-full overflow-hidden border border-white/25 shadow-[inset_0_1px_2px_rgba(0,0,0,0.55)] ${barExtraClass}`}
+      >
+        {fill}
+      </div>
+    </div>
+  );
+
+  const renderMeterRow = (
+    fighter: Fighter,
+    align: 'left' | 'right'
+  ) => {
+    const sprintPct = Math.min(100, Math.max(0, ((fighter.sprintStamina ?? SPRINT_STAMINA_MAX) / SPRINT_STAMINA_MAX) * 100));
+    const sprintEmpty = sprintPct <= 0.5;
+    const sprintLow = sprintPct < 22;
+    const superPct = Math.min(100, Math.max(0, ((fighter.superMeter ?? 0) / SUPER_METER_MAX) * 100));
+    const superReady = superPct >= 99.5;
+    const held = fighter.heldWeapon;
+    const itemDef = held ? ITEM_DEFS[held.kind] : null;
+    const itemPct = held && itemDef
+      ? Math.min(100, Math.max(0, (held.usesLeft / Math.max(1, itemDef.uses)) * 100))
+      : 0;
+    const itemLow = itemPct <= 35;
+
     return (
-      <div className={`flex items-center gap-1.5 mt-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
-        <div
-          className={`w-20 sm:w-32 md:w-40 h-1.5 bg-slate-950 border rounded-full overflow-hidden p-[1px] ${
-            depleted
-              ? 'border-rose-700'
-              : fighter.isSprinting
-              ? 'border-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.55)]'
-              : 'border-slate-700'
-          }`}
-        >
+      <div className={`flex flex-col gap-1 sm:gap-1.5 mt-1.5 w-[14rem] sm:w-[18rem] md:w-[22rem] lg:w-[26rem] ${align === 'right' ? 'items-end' : 'items-start'}`}>
+        {renderLabeledBar(
+          'Dmg',
+          <div
+            className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-150 ${getHealthBarGradient(fighter.damagePercent)}`}
+            style={{ width: `${getMeterFillWidth(fighter.damagePercent)}%` }}
+          />,
+          align,
+          'text-white/80'
+        )}
+
+        {renderLabeledBar(
+          sprintEmpty ? 'Empty' : 'Sprint',
           <div
             className={`h-full rounded-full transition-[width] duration-75 ${
-              depleted
-                ? 'bg-slate-700'
-                : low
+              sprintEmpty
+                ? 'bg-slate-600'
+                : sprintLow
                 ? 'bg-gradient-to-r from-rose-500 to-orange-400'
                 : fighter.isSprinting
                 ? 'bg-gradient-to-r from-violet-500 to-fuchsia-400'
                 : 'bg-gradient-to-r from-indigo-500 to-violet-400'
             }`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <span
-          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${
-            depleted ? 'text-rose-400' : fighter.isSprinting ? 'text-violet-300' : 'text-slate-500'
-          }`}
-        >
-          {depleted ? 'Empty' : 'Sprint'}
-        </span>
-      </div>
-    );
-  };
+            style={{ width: `${sprintPct}%` }}
+          />,
+          align,
+          sprintEmpty ? 'text-rose-400' : fighter.isSprinting ? 'text-violet-300' : 'text-violet-200/80',
+          fighter.isSprinting ? 'border-violet-400/50' : ''
+        )}
 
-  const renderSuperBar = (fighter: Fighter, align: 'left' | 'right') => {
-    const pct = Math.min(100, Math.max(0, ((fighter.superMeter ?? 0) / SUPER_METER_MAX) * 100));
-    const ready = pct >= 99.5;
-    return (
-      <div className={`flex items-center gap-1.5 mt-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
-        <div
-          className={`w-20 sm:w-32 md:w-40 h-1.5 bg-slate-950 border rounded-full overflow-hidden p-[1px] ${
-            ready
-              ? 'border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.7)]'
-              : 'border-slate-700'
-          }`}
-        >
+        {renderLabeledBar(
+          superReady ? 'Ready' : 'Super',
           <div
             className={`h-full rounded-full transition-[width] duration-100 ${
-              ready
-                ? 'bg-gradient-to-r from-amber-300 via-yellow-300 to-orange-400 animate-pulse'
+              superReady
+                ? 'bg-gradient-to-r from-amber-300 via-yellow-300 to-orange-400'
                 : 'bg-gradient-to-r from-amber-700 to-amber-400'
             }`}
-            style={{ width: `${Math.max(pct, pct > 0 ? 4 : 0)}%` }}
-          />
-        </div>
-        <span
-          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${
-            ready ? 'text-amber-300' : 'text-slate-500'
-          }`}
-          title={fighter.stats.superMove?.name}
-        >
-          {ready ? 'READY' : 'Super'}
-        </span>
+            style={{ width: `${Math.max(superPct, superPct > 0 ? 4 : 0)}%` }}
+          />,
+          align,
+          superReady ? 'text-amber-300' : 'text-amber-200/80',
+          superReady ? 'border-amber-300/70 shadow-[0_0_8px_rgba(251,191,36,0.35)]' : ''
+        )}
+
+        {held && itemDef &&
+          renderLabeledBar(
+            itemDef.name.length > 6 ? 'Item' : itemDef.name,
+            <div
+              className="h-full rounded-full transition-[width] duration-100"
+              style={{
+                width: `${Math.max(itemPct, itemPct > 0 ? 4 : 0)}%`,
+                background: itemLow
+                  ? 'linear-gradient(to right, #f43f5e, #fb7185)'
+                  : `linear-gradient(to right, ${itemDef.color}, ${itemDef.glowColor})`,
+              }}
+            />,
+            align,
+            itemLow ? 'text-rose-400' : 'text-white/70',
+            itemLow ? 'border-rose-400/60' : ''
+          )}
       </div>
     );
   };
 
-  const renderItemDurabilityBar = (fighter: Fighter, align: 'left' | 'right') => {
-    const held = fighter.heldWeapon;
-    if (!held) return null;
-    const def = ITEM_DEFS[held.kind];
-    const maxUses = Math.max(1, def.uses);
-    const pct = Math.min(100, Math.max(0, (held.usesLeft / maxUses) * 100));
-    const low = pct <= 35;
+  const renderFighterHud = (fighter: Fighter, side: 'left' | 'right') => {
+    const isLeft = side === 'left';
+    const stockColor = isLeft
+      ? 'bg-red-500 border-red-200 shadow-[0_0_6px_rgba(239,68,68,0.85)]'
+      : 'bg-sky-500 border-sky-200 shadow-[0_0_6px_rgba(56,189,248,0.85)]';
+
     return (
-      <div className={`flex items-center gap-1.5 mt-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+      <div
+        className={`flex items-end gap-2 sm:gap-2.5 min-w-0 ${isLeft ? '' : 'flex-row-reverse'}`}
+        id={isLeft ? 'p1-health-display' : 'p2-health-display'}
+      >
+        {/* Portrait */}
         <div
-          className="w-20 sm:w-32 md:w-40 h-1.5 bg-slate-950 border rounded-full overflow-hidden p-[1px]"
+          className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center font-black text-[10px] sm:text-xs text-slate-950 shrink-0 border-2 shadow-[0_2px_12px_rgba(0,0,0,0.45)]"
           style={{
-            borderColor: low ? '#fb7185' : `${def.glowColor}99`,
-            boxShadow: low ? '0 0 8px rgba(251,113,133,0.45)' : `0 0 8px ${def.glowColor}55`,
+            backgroundColor: fighter.stats.color,
+            borderColor: fighter.stats.glowColor || '#ffffff',
           }}
         >
-          <div
-            className="h-full rounded-full transition-[width] duration-100"
-            style={{
-              width: `${Math.max(pct, pct > 0 ? 4 : 0)}%`,
-              background: low
-                ? 'linear-gradient(to right, #f43f5e, #fb7185)'
-                : `linear-gradient(to right, ${def.color}, ${def.glowColor})`,
-            }}
-          />
+          {fighter.isCpu ? 'CPU' : isLeft ? 'P1' : 'P2'}
         </div>
-        <span
-          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider shrink-0 ${
-            low ? 'text-rose-400' : 'text-slate-400'
-          }`}
-          style={!low ? { color: def.glowColor } : undefined}
-          title={`${def.name} durability`}
-        >
-          {held.usesLeft}/{maxUses}
-        </span>
+
+        <div className={`flex flex-col min-w-0 ${isLeft ? 'items-start' : 'items-end'}`}>
+          <div className={`flex items-center gap-1.5 ${isLeft ? '' : 'flex-row-reverse'}`}>
+            <span
+              className="text-[11px] sm:text-sm font-extrabold text-white tracking-wide truncate max-w-[7rem] sm:max-w-[10rem]"
+              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.5)' }}
+            >
+              {fighter.stats.name}
+            </span>
+            <div className={`flex items-center gap-0.5 ${isLeft ? '' : 'flex-row-reverse'}`}>
+              {Array.from({ length: settings.stocks }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full border transition-all ${
+                    idx < fighter.stocks ? stockColor : 'bg-black/40 border-white/15 opacity-30'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className={`flex items-baseline gap-1.5 ${isLeft ? '' : 'flex-row-reverse'}`}>
+            <span
+              className={`font-mono text-2xl sm:text-3xl md:text-4xl font-black leading-none tracking-tight ${getPercentColor(
+                fighter.damagePercent
+              )}`}
+              style={{ textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 18px rgba(0,0,0,0.55)' }}
+            >
+              {Math.floor(fighter.damagePercent)}
+              <span className="text-base sm:text-lg md:text-xl">%</span>
+            </span>
+          </div>
+
+          {renderMeterRow(fighter, isLeft ? 'left' : 'right')}
+        </div>
       </div>
     );
   };
 
-  const activeGrabber = p1.grab.role === 'grabber' ? p1 : p2.grab.role === 'grabber' ? p2 : null;
-  const isP1LedgeHanging = p1.currentAction === 'ledge_hang';
-
   return (
-    <div className="w-full h-full flex flex-col min-h-0 bg-slate-950 select-none overflow-hidden">
-      {/* 
-        ========================================================================
-        1. TOP HEADER BAR: HEALTH BARS & ESSENTIAL MATCH CONTROLS
-        Positioned strictly at the top, completely outside and above the arena.
-        The health bars CANNOT block the fighters or recovery arcs.
-        ========================================================================
-      */}
-      <header
-        id="battle-header"
-        className={`${
-          p1.heldWeapon || p2.heldWeapon
-            ? 'h-[calc(5.25rem+env(safe-area-inset-top,0px))] sm:h-[calc(5.75rem+env(safe-area-inset-top,0px))]'
-            : 'h-[calc(4.25rem+env(safe-area-inset-top,0px))] sm:h-[calc(4.75rem+env(safe-area-inset-top,0px))]'
-        } w-full bg-slate-900/95 border-b border-slate-800 pt-[env(safe-area-inset-top,0px)] pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] sm:pl-[max(1rem,env(safe-area-inset-left,0px))] sm:pr-[max(1rem,env(safe-area-inset-right,0px))] flex items-center justify-between shrink-0 shadow-xl z-20 transition-[height] duration-150 box-border`}
+    <div className="w-full h-full relative min-h-0 bg-slate-950 select-none overflow-hidden">
+      {/* Full-bleed arena — stage fills the entire viewport */}
+      <main
+        id="battle-game-screen"
+        className="absolute inset-0 bg-slate-950 overflow-hidden flex items-center justify-center"
       >
-        {/* PLAYER 1 HEALTH BAR & CARD (TOP-LEFT) */}
-        <div id="p1-health-display" className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <div
-            className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm text-slate-950 shadow-md border-2 shrink-0 transition-transform"
-            style={{
-              backgroundColor: p1.stats.color,
-              borderColor: p1.stats.glowColor || '#ffffff',
-            }}
+        {children}
+
+        {onVirtualKey && onReleaseAllVirtual && (
+          <TouchControls
+            visible={!!isTouchDevice && !!showTouchControls && !isPaused}
+            onVirtualKey={onVirtualKey}
+            onReleaseAll={onReleaseAllVirtual}
+          />
+        )}
+
+        {/* Keyboard guide tab */}
+        {!showSidePanel && !(isTouchDevice && showTouchControls) && (
+          <button
+            id="edge-controls-open-btn"
+            onClick={() => setShowSidePanel(true)}
+            title="Open Controls Guide"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-black/50 hover:bg-black/70 text-white/60 hover:text-sky-300 border-l border-y border-white/15 hover:border-sky-400/40 rounded-l-lg py-2.5 px-1.5 flex flex-col items-center gap-1 backdrop-blur-[2px] transition-all cursor-pointer group"
           >
-            P1
-          </div>
-
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-xs sm:text-sm font-extrabold text-white tracking-wide">
-                {p1.stats.name}
-              </span>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: settings.stocks }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`w-2.5 h-2.5 rounded-full border transition-all ${
-                      idx < p1.stocks
-                        ? 'bg-red-500 border-red-300 shadow-[0_0_6px_rgba(239,68,68,0.9)]'
-                        : 'bg-slate-800 border-slate-700 opacity-20'
-                    }`}
-                  />
-                ))}
-              </div>
-              {p1.heldWeapon && (
-                <span
-                  className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide border"
-                  style={{
-                    color: ITEM_DEFS[p1.heldWeapon.kind].glowColor,
-                    borderColor: `${ITEM_DEFS[p1.heldWeapon.kind].glowColor}88`,
-                    backgroundColor: `${ITEM_DEFS[p1.heldWeapon.kind].color}33`,
-                  }}
-                >
-                  {ITEM_DEFS[p1.heldWeapon.kind].name}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 mt-0.5">
-              <div className="w-20 sm:w-32 md:w-40 h-2 sm:h-2.5 bg-slate-950 border border-slate-700 rounded-full overflow-hidden p-0.5 shadow-inner">
-                <div
-                  className={`h-full rounded-full bg-gradient-to-r transition-all duration-150 ${getHealthBarGradient(
-                    p1.damagePercent
-                  )}`}
-                  style={{ width: `${getMeterFillWidth(p1.damagePercent)}%` }}
-                />
-              </div>
-
-              <span
-                className={`font-mono text-xs sm:text-base font-black leading-none ${getPercentColor(
-                  p1.damagePercent
-                )}`}
-              >
-                {Math.floor(p1.damagePercent)}%
-              </span>
-            </div>
-            {renderSprintBar(p1, 'left')}
-            {renderSuperBar(p1, 'left')}
-            {renderItemDurabilityBar(p1, 'left')}
-          </div>
-        </div>
-
-        {/* CENTER: TIME & QUICK MATCH CONTROLS */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Dynamic Action Alerts */}
-          {activeGrabber ? (
-            <div className="hidden md:flex animate-bounce bg-amber-500 text-slate-950 font-black text-[11px] px-2.5 py-0.5 rounded-full shadow border border-amber-300 items-center gap-1">
-              <Sparkles className="w-3 h-3" />
-              <span>GRAB! [W/A/S/D]</span>
-            </div>
-          ) : isP1LedgeHanging ? (
-            <div className="hidden md:flex animate-pulse bg-sky-500 text-slate-950 font-black text-[11px] px-2.5 py-0.5 rounded-full shadow border border-sky-300 items-center gap-1">
-              <Flame className="w-3 h-3" />
-              <span>EDGE! [W/D/SPACE/S]</span>
-            </div>
-          ) : null}
-
-          {/* Match Timer */}
-          <div
-            className={`bg-slate-950/80 border px-3 py-1 rounded-full flex items-center gap-2 shadow-inner ${
-              matchTime <= 10
-                ? 'border-red-500/70 shadow-[0_0_12px_rgba(239,68,68,0.35)]'
-                : matchTime <= 30
-                ? 'border-amber-500/60'
-                : 'border-slate-800'
-            }`}
-          >
-            <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
-              {settings.mode === 'cpu'
-                ? `VS CPU (LVL ${settings.cpuLevel})`
-                : settings.mode === '2p'
-                ? '2-PLAYER'
-                : 'TRAINING'}
+            <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform text-sky-400" />
+            <span className="text-[9px] font-bold uppercase tracking-wider [writing-mode:vertical-lr] rotate-180">
+              Controls
             </span>
-            <span
-              className={`text-xs sm:text-sm font-black font-mono tracking-wider sm:border-l sm:border-slate-800 sm:pl-2 ${
-                matchTime <= 10
-                  ? 'text-red-400 animate-pulse'
-                  : matchTime <= 30
-                  ? 'text-amber-300'
-                  : 'text-white'
-              }`}
-            >
-              {formatTime(matchTime)}
-            </span>
-          </div>
+          </button>
+        )}
 
-          {/* Quick Header Buttons (Consolidated, Zero Floating Screen Clutter) */}
-          <div className="flex items-center gap-1">
-            {isTouchDevice && onToggleTouchControls && (
-              <button
-                id="header-touch-controls-toggle"
-                onClick={onToggleTouchControls}
-                title={showTouchControls ? 'Hide on-screen controls' : 'Show on-screen controls'}
-                className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                  showTouchControls
-                    ? 'bg-sky-500/25 text-sky-300 border-sky-500/60'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5" />
-              </button>
-            )}
-
-            <button
-              id="header-side-panel-toggle"
-              onClick={() => setShowSidePanel((prev) => !prev)}
-              title={showSidePanel ? 'Minimize Controls Panel' : 'Open Controls Guide'}
-              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm ${
-                showSidePanel
-                  ? 'bg-sky-500/25 text-sky-300 border-sky-500/60 shadow-[0_0_10px_rgba(56,189,248,0.2)]'
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750 hover:text-white hover:border-slate-600'
-              }`}
-            >
-              <Gamepad2 className="w-3.5 h-3.5 text-sky-400" />
-              <span className="text-[11px] font-semibold hidden sm:inline">Controls</span>
-            </button>
-
-            <button
-              id="header-sound-btn"
-              onClick={onToggleSound}
-              title="Toggle Sound"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
-            >
-              {settings.soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-red-400" />}
-            </button>
-
-            <button
-              id="header-pause-btn"
-              onClick={onTogglePause}
-              title={isPaused ? 'Resume Fight' : 'Pause Fight'}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
-            >
-              {isPaused ? <Play className="w-3.5 h-3.5 text-emerald-400" /> : <Pause className="w-3.5 h-3.5" />}
-            </button>
-
-            <button
-              id="header-restart-btn"
-              onClick={onRestart}
-              title="Restart Match"
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-            </button>
-
-            {onBackToSelect && (
-              <button
-                id="header-select-btn"
-                onClick={onBackToSelect}
-                title="Back to Fighter Select"
-                className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 text-xs font-bold transition cursor-pointer"
-              >
-                <ArrowLeft className="w-3 h-3" />
-                <span className="text-[11px]">Fighters</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* PLAYER 2 / CPU HEALTH BAR & CARD (TOP-RIGHT) */}
-        <div id="p2-health-display" className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                {Array.from({ length: settings.stocks }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`w-2.5 h-2.5 rounded-full border transition-all ${
-                      idx < p2.stocks
-                        ? 'bg-blue-500 border-blue-300 shadow-[0_0_6px_rgba(59,130,246,0.9)]'
-                        : 'bg-slate-800 border-slate-700 opacity-20'
-                    }`}
-                  />
-                ))}
-              </div>
-              <span className="text-xs sm:text-sm font-extrabold text-white tracking-wide">
-                {p2.stats.name}
-              </span>
-              {p2.heldWeapon && (
-                <span
-                  className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide border"
-                  style={{
-                    color: ITEM_DEFS[p2.heldWeapon.kind].glowColor,
-                    borderColor: `${ITEM_DEFS[p2.heldWeapon.kind].glowColor}88`,
-                    backgroundColor: `${ITEM_DEFS[p2.heldWeapon.kind].color}33`,
-                  }}
-                >
-                  {ITEM_DEFS[p2.heldWeapon.kind].name}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 mt-0.5">
-              <span
-                className={`font-mono text-xs sm:text-base font-black leading-none ${getPercentColor(
-                  p2.damagePercent
-                )}`}
-              >
-                {Math.floor(p2.damagePercent)}%
-              </span>
-
-              <div className="w-20 sm:w-32 md:w-40 h-2 sm:h-2.5 bg-slate-950 border border-slate-700 rounded-full overflow-hidden p-0.5 shadow-inner">
-                <div
-                  className={`h-full rounded-full bg-gradient-to-r transition-all duration-150 ${getHealthBarGradient(
-                    p2.damagePercent
-                  )}`}
-                  style={{ width: `${getMeterFillWidth(p2.damagePercent)}%` }}
-                />
-              </div>
-            </div>
-            {renderSprintBar(p2, 'right')}
-            {renderSuperBar(p2, 'right')}
-            {renderItemDurabilityBar(p2, 'right')}
-          </div>
-
-          <div
-            className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm text-slate-950 shadow-md border-2 shrink-0 transition-transform"
-            style={{
-              backgroundColor: p2.stats.color,
-              borderColor: p2.stats.glowColor || '#ffffff',
-            }}
-          >
-            {p2.isCpu ? 'CPU' : 'P2'}
-          </div>
-        </div>
-      </header>
-
-      {/* 
-        ========================================================================
-        2. MAIN ARENA & SLENDER SIDE CONTROLS REFERENCE
-        - Pure unobstructed arena canvas: NO floating overlay buttons in the way!
-        - Side Panel: Clean, streamlined reference guide without bulky buttons taking up room!
-        ========================================================================
-      */}
-      <div className="flex-1 flex flex-row min-h-0 relative overflow-hidden">
-        {/* BATTLE ARENA CANVAS - 100% UNCLUTTERED */}
-        <main
-          id="battle-game-screen"
-          className="flex-1 h-full min-w-0 relative bg-slate-950 overflow-hidden flex items-center justify-center"
-        >
-          {children}
-
-          {onVirtualKey && onReleaseAllVirtual && (
-            <TouchControls
-              visible={!!isTouchDevice && !!showTouchControls && !isPaused}
-              onVirtualKey={onVirtualKey}
-              onReleaseAll={onReleaseAllVirtual}
-            />
-          )}
-
-          {/* Keyboard guide tab — hide while touch pads occupy the right thumb zone */}
-          {!showSidePanel && !(isTouchDevice && showTouchControls) && (
-            <button
-              id="edge-controls-open-btn"
-              onClick={() => setShowSidePanel(true)}
-              title="Click to Open Controls Guide"
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-sky-300 border-l border-y border-slate-700/80 hover:border-sky-500/50 rounded-l-lg py-2.5 px-1.5 flex flex-col items-center gap-1 shadow-lg transition-all cursor-pointer group"
-            >
-              <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform text-sky-400" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 group-hover:text-sky-200 [writing-mode:vertical-lr] rotate-180">
-                Controls
-              </span>
-            </button>
-          )}
-        </main>
-
-        {/* STREAMLINED SIDE CONTROLS PANEL (Minimized by default, opened when clicked) */}
+        {/* Side controls panel */}
         {showSidePanel && (
           <aside
             id="side-control-panel"
-            className="w-60 sm:w-68 shrink-0 bg-slate-900/95 border-l border-slate-800 flex flex-col h-full z-20 shadow-xl select-none"
+            className="absolute right-0 top-0 bottom-0 w-60 sm:w-68 z-30 bg-slate-950/92 border-l border-white/10 flex flex-col shadow-2xl backdrop-blur-md select-none"
           >
-            {/* Header */}
-            <div className="p-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+            <div className="p-2.5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-slate-200">
                 <Gamepad2 className="w-4 h-4 text-sky-400" />
-                <span className="text-xs font-bold uppercase tracking-wider">Controls Guide</span>
+                <span className="text-xs font-bold uppercase tracking-wider">Controls</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
                   id="side-open-guide-btn"
                   onClick={onOpenControls}
-                  title="Detailed Full-Screen Guide"
-                  className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition cursor-pointer"
+                  title="Full Guide"
+                  className="text-slate-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer"
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
                 </button>
                 <button
                   id="side-close-panel-btn"
                   onClick={() => setShowSidePanel(false)}
-                  title="Minimize Controls Guide"
-                  className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition cursor-pointer"
+                  title="Close"
+                  className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-white/10 transition cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            {/* Clean compact list */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-              {/* MOVEMENT KEYS */}
-              <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
                 <div className="flex items-center gap-1 text-sky-400 font-bold uppercase tracking-wider text-[10px] mb-1.5">
                   <Zap className="w-3 h-3" />
                   <span>Movement</span>
                 </div>
                 <div className="space-y-1 font-mono text-[11px]">
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span className="text-slate-400">Jump / Recovery</span>
-                    <kbd className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.up ? 'bg-sky-500 text-slate-950 border-sky-300' : 'bg-slate-800 border-slate-700 text-slate-200'}`}>W</kbd>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span className="text-slate-400">Move Left</span>
-                    <kbd className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.left ? 'bg-sky-500 text-slate-950 border-sky-300' : 'bg-slate-800 border-slate-700 text-slate-200'}`}>A</kbd>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span className="text-slate-400">Crouch / Drop</span>
-                    <kbd className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.down ? 'bg-sky-500 text-slate-950 border-sky-300' : 'bg-slate-800 border-slate-700 text-slate-200'}`}>S</kbd>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span className="text-slate-400">Move Right</span>
-                    <kbd className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.right ? 'bg-sky-500 text-slate-950 border-sky-300' : 'bg-slate-800 border-slate-700 text-slate-200'}`}>D</kbd>
-                  </div>
+                  {[
+                    { label: 'Jump / Recovery', key: 'W', active: activeKeys?.up },
+                    { label: 'Move Left', key: 'A', active: activeKeys?.left },
+                    { label: 'Crouch / Drop', key: 'S', active: activeKeys?.down },
+                    { label: 'Move Right', key: 'D', active: activeKeys?.right },
+                  ].map((row) => (
+                    <div key={row.key} className="flex items-center justify-between text-slate-300">
+                      <span className="text-slate-400">{row.label}</span>
+                      <kbd
+                        className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${
+                          row.active
+                            ? 'bg-sky-500 text-slate-950 border-sky-300'
+                            : 'bg-slate-800 border-slate-700 text-slate-200'
+                        }`}
+                      >
+                        {row.key}
+                      </kbd>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* COMBAT ACTIONS (Sleek Compact Key Reference, No Bulky Buttons) */}
-              <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
                 <div className="flex items-center gap-1 text-amber-400 font-bold uppercase tracking-wider text-[10px] mb-1.5">
                   <Swords className="w-3 h-3" />
-                  <span>Combat Attacks</span>
+                  <span>Combat</span>
                 </div>
                 <div className="space-y-1.5 font-mono text-[11px]">
                   <div className="flex items-center justify-between text-slate-300">
@@ -582,72 +356,185 @@ export const HUD: React.FC<HUDProps> = ({
                       <span className="text-amber-300 font-bold block leading-tight">Punch / Jab</span>
                       <span className="text-[9px] text-slate-500 font-sans">Fast combo starter</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.punch ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'bg-slate-800 border-slate-700 text-amber-200'}`}>SPACE</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.punch ? 'bg-amber-400 text-slate-950 border-amber-300' : 'bg-slate-800 border-slate-700 text-amber-200'}`}>SPACE</kbd>
                   </div>
-
                   <div className="flex items-center justify-between text-slate-300">
                     <div>
                       <span className="text-rose-300 font-bold block leading-tight">Kick / Smash</span>
-                      <span className="text-[9px] text-slate-500 font-sans">High knockback finisher</span>
+                      <span className="text-[9px] text-slate-500 font-sans">High knockback</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.kick ? 'bg-rose-400 text-slate-950 border-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'bg-slate-800 border-slate-700 text-rose-200'}`}>C</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.kick ? 'bg-rose-400 text-slate-950 border-rose-300' : 'bg-slate-800 border-slate-700 text-rose-200'}`}>C</kbd>
                   </div>
-
                   <div className="flex items-center justify-between text-slate-300">
                     <div>
                       <span className="text-sky-300 font-bold block leading-tight">Grab & Throw</span>
-                      <span className="text-[9px] text-slate-500 font-sans">Holds shield / opponent</span>
+                      <span className="text-[9px] text-slate-500 font-sans">Holds / throws</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.grab ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'bg-slate-800 border-slate-700 text-sky-200'}`}>V</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.grab ? 'bg-sky-400 text-slate-950 border-sky-300' : 'bg-slate-800 border-slate-700 text-sky-200'}`}>V</kbd>
                   </div>
-
                   <div className="flex items-center justify-between text-slate-300">
                     <div>
                       <span className="text-cyan-300 font-bold block leading-tight">Block / Guard</span>
-                      <span className="text-[9px] text-slate-500 font-sans">Negates punches & kicks</span>
+                      <span className="text-[9px] text-slate-500 font-sans">Negates attacks</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.block ? 'bg-cyan-400 text-slate-950 border-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]' : 'bg-slate-800 border-slate-700 text-cyan-200'}`}>B</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.block ? 'bg-cyan-400 text-slate-950 border-cyan-300' : 'bg-slate-800 border-slate-700 text-cyan-200'}`}>B</kbd>
                   </div>
-
                   <div className="flex items-center justify-between text-slate-300">
                     <div>
                       <span className="text-purple-300 font-bold block leading-tight">Sprint Dash</span>
-                      <span className="text-[9px] text-slate-500 font-sans">Drains the sprint bar</span>
+                      <span className="text-[9px] text-slate-500 font-sans">Drains sprint bar</span>
                     </div>
-                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.sprint ? 'bg-purple-400 text-slate-950 border-purple-300 shadow-[0_0_8px_rgba(192,132,252,0.8)]' : 'bg-slate-800 border-slate-700 text-purple-200'}`}>SHIFT</kbd>
+                    <kbd className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeKeys?.sprint ? 'bg-purple-400 text-slate-950 border-purple-300' : 'bg-slate-800 border-slate-700 text-purple-200'}`}>SHIFT</kbd>
                   </div>
                 </div>
               </div>
 
-              {/* RECOVERY & TECHNIQUES */}
-              <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
                 <div className="flex items-center gap-1 text-emerald-400 font-bold uppercase tracking-wider text-[10px] mb-1.5">
                   <Shield className="w-3 h-3" />
                   <span>Pro Tech</span>
                 </div>
                 <ul className="space-y-1 text-[10px] text-slate-300 leading-tight">
-                  <li className="flex items-start gap-1">
-                    <span className="text-cyan-400 font-bold">•</span>
-                    <span><strong>Block:</strong> Hold <code className="text-cyan-300 font-bold">B</code> while facing the attacker to negate punches, kicks, and projectiles. Grabs still break through!</span>
+                  <li>
+                    <strong>Block:</strong> Hold <code className="text-cyan-300 font-bold">B</code> facing the attacker. Grabs break through.
                   </li>
-                  <li className="flex items-start gap-1">
-                    <span className="text-emerald-400 font-bold">•</span>
-                    <span><strong>Ledge Sweetspot:</strong> Near edge, you auto-snap to ledge. Press <code className="text-sky-300 font-bold">W</code> to jump or <code className="text-sky-300 font-bold">Space</code> to climb-attack!</span>
+                  <li>
+                    <strong>Ledge:</strong> Near edge, auto-snap. <code className="text-sky-300 font-bold">W</code> jump or <code className="text-sky-300 font-bold">Space</code> climb-attack.
                   </li>
-                  <li className="flex items-start gap-1">
-                    <span className="text-amber-400 font-bold">•</span>
-                    <span><strong>Throws:</strong> While holding opponent (<code className="text-amber-300 font-bold">V</code>), press <code className="text-amber-300 font-bold">W/S/A/D</code> to launch them.</span>
+                  <li>
+                    <strong>Throws:</strong> While holding (<code className="text-amber-300 font-bold">V</code>), press <code className="text-amber-300 font-bold">W/S/A/D</code>.
                   </li>
-                  <li className="flex items-start gap-1">
-                    <span className="text-rose-400 font-bold">•</span>
-                    <span><strong>Item Drops:</strong> Walk into glowing crates to grab guns, swords, hammers, bats, and bombs. <code className="text-amber-300 font-bold">Space</code> fires/swings. <code className="text-sky-300 font-bold">V</code> tosses it.</span>
+                  <li>
+                    <strong>Items:</strong> Walk into crates. <code className="text-amber-300 font-bold">Space</code> uses, <code className="text-sky-300 font-bold">V</code> tosses.
                   </li>
                 </ul>
               </div>
             </div>
           </aside>
         )}
-      </div>
+      </main>
+
+      {/* Overlay HUD — floats on top of stage, no section background */}
+      <header
+        id="battle-header"
+        className="absolute top-0 left-0 right-0 z-20 pointer-events-none pt-[max(0.5rem,env(safe-area-inset-top,0px))] px-[max(0.75rem,env(safe-area-inset-left,0px))] sm:px-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))] sm:pr-[max(1rem,env(safe-area-inset-right,0px))]"
+      >
+        <div className="flex items-start justify-between gap-2 sm:gap-4">
+          {renderFighterHud(p1, 'left')}
+
+          {/* Center: timer + compact menu */}
+          <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5 pointer-events-auto">
+            <div
+              className={`font-mono text-xl sm:text-2xl md:text-3xl font-black tracking-wider leading-none ${
+                matchTime <= 10
+                  ? 'text-red-400 animate-pulse'
+                  : matchTime <= 30
+                  ? 'text-amber-300'
+                  : 'text-white'
+              }`}
+              style={{ textShadow: '0 2px 6px rgba(0,0,0,0.95), 0 0 20px rgba(0,0,0,0.6)' }}
+            >
+              {formatTime(matchTime)}
+            </div>
+
+            <div className="relative flex items-center gap-1">
+              <button
+                id="header-pause-btn"
+                onClick={onTogglePause}
+                title={isPaused ? 'Resume' : 'Pause'}
+                className="p-1.5 rounded-md bg-black/40 hover:bg-black/60 text-white/90 border border-white/15 backdrop-blur-[2px] transition cursor-pointer"
+              >
+                {isPaused ? <Play className="w-3.5 h-3.5 text-emerald-400" /> : <Pause className="w-3.5 h-3.5" />}
+              </button>
+
+              <button
+                id="header-menu-btn"
+                onClick={() => setShowMenu((v) => !v)}
+                title="Match options"
+                className={`p-1.5 rounded-md border backdrop-blur-[2px] transition cursor-pointer ${
+                  showMenu
+                    ? 'bg-sky-500/30 text-sky-200 border-sky-400/50'
+                    : 'bg-black/40 hover:bg-black/60 text-white/90 border-white/15'
+                }`}
+              >
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+
+              {showMenu && (
+                <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 rounded-lg bg-black/75 border border-white/15 backdrop-blur-md shadow-xl">
+                  {isTouchDevice && onToggleTouchControls && (
+                    <button
+                      id="header-touch-controls-toggle"
+                      onClick={onToggleTouchControls}
+                      title={showTouchControls ? 'Hide touch controls' : 'Show touch controls'}
+                      className={`p-1.5 rounded-md border transition cursor-pointer ${
+                        showTouchControls
+                          ? 'bg-sky-500/30 text-sky-300 border-sky-500/50'
+                          : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <Smartphone className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  <button
+                    id="header-side-panel-toggle"
+                    onClick={() => {
+                      setShowSidePanel((prev) => !prev);
+                      setShowMenu(false);
+                    }}
+                    title="Controls guide"
+                    className="p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-sky-300 border border-white/10 transition cursor-pointer"
+                  >
+                    <Gamepad2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    id="header-sound-btn"
+                    onClick={onToggleSound}
+                    title="Toggle Sound"
+                    className="p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 transition cursor-pointer"
+                  >
+                    {settings.soundEnabled ? (
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                    )}
+                  </button>
+
+                  <button
+                    id="header-restart-btn"
+                    onClick={() => {
+                      onRestart();
+                      setShowMenu(false);
+                    }}
+                    title="Restart Match"
+                    className="p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-amber-300 border border-white/10 transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+
+                  {onBackToSelect && (
+                    <button
+                      id="header-select-btn"
+                      onClick={() => {
+                        onBackToSelect();
+                        setShowMenu(false);
+                      }}
+                      title="Back to Fighter Select"
+                      className="p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-amber-300 border border-white/10 transition cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {renderFighterHud(p2, 'right')}
+        </div>
+      </header>
     </div>
   );
 };

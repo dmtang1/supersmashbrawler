@@ -27,9 +27,9 @@ export const AIR_DRAG = 0.96;
 /** Global launch scale. 1.0 is the original curve; lower values keep hits snappy without early KOs. */
 const KNOCKBACK_SCALE = 0.62;
 
-/** ~4.8s of continuous sprint at 60fps, then a short wait before you can dash again. */
-const SPRINT_STAMINA_DRAIN = 0.35;
-const SPRINT_STAMINA_REGEN = 0.38;
+/** ~4.5s of continuous sprint at 60fps, then a short wait before you can dash again. */
+const SPRINT_STAMINA_DRAIN = 0.37;
+const SPRINT_STAMINA_REGEN = 0.28;
 const SPRINT_RESTART_MIN = 12;
 
 /** Smash-style launch: every 1% of damage adds `growth` speed. Heavier fighters resist more. */
@@ -37,7 +37,11 @@ function knockbackFromPercent(base: number, growth: number, percent: number, wei
   return ((base + percent * growth) / weight) * KNOCKBACK_SCALE;
 }
 
-function updateSprintStamina(fighter: Fighter, wantsSprint: boolean) {
+/**
+ * Drain while dashing. Never regen while Sprint is held — brief grounded flicker
+ * used to refill faster than drain (regen was > drain), so the HUD bar looked stuck.
+ */
+function updateSprintStamina(fighter: Fighter, wantsSprint: boolean, sprintHeld: boolean) {
   const stamina = fighter.sprintStamina ?? SPRINT_STAMINA_MAX;
   const canKeepSprinting = stamina > 0;
   const canStartSprinting = stamina >= SPRINT_RESTART_MIN;
@@ -45,7 +49,7 @@ function updateSprintStamina(fighter: Fighter, wantsSprint: boolean) {
 
   if (fighter.isSprinting) {
     fighter.sprintStamina = Math.max(0, stamina - SPRINT_STAMINA_DRAIN);
-  } else {
+  } else if (!sprintHeld) {
     fighter.sprintStamina = Math.min(SPRINT_STAMINA_MAX, stamina + SPRINT_STAMINA_REGEN);
   }
 }
@@ -277,7 +281,8 @@ export function updateFighterPhysics(
       input.sprint &&
       (input.left || input.right) &&
       fighter.isGrounded &&
-      !fighter.isCrouching
+      !fighter.isCrouching,
+    input.sprint
   );
 
   // Handle Ledge Hang (holding onto the platform edge)
@@ -2001,6 +2006,7 @@ function resolvePlatformCollisions(
   particles: Particle[],
   addScreenShake: (intensity: number, frames: number) => void
 ) {
+  const wasGrounded = fighter.isGrounded;
   fighter.isGrounded = false;
   fighter.onDropThroughPlatform = false;
 
@@ -2047,6 +2053,24 @@ function resolvePlatformCollisions(
       if (fighter.vy < 0 && fighter.y - fighter.height / 2 <= platBottom && fighter.y > platBottom - 16) {
         fighter.y = platBottom + fighter.height / 2;
         fighter.vy = 0;
+      }
+    }
+  }
+
+  // Sticky ground: stay snapped to a platform top when still overlapping it.
+  // Without this, tiny y/vy jitter while dashing briefly clears isGrounded,
+  // cancels sprint, and (with the old regen>drain rates) refilled the bar.
+  if (!fighter.isGrounded && wasGrounded && fighter.vy >= 0 && fighter.vy < 5 && (fighter.dropThroughTimer ?? 0) <= 0) {
+    for (const plat of stage.platforms) {
+      const platLeft = plat.x;
+      const platRight = plat.x + plat.width;
+      const platTop = plat.y;
+      const withinHorizontal =
+        fighter.x + fighter.width / 2 > platLeft && fighter.x - fighter.width / 2 < platRight;
+      if (!withinHorizontal) continue;
+      if (feetY >= platTop - 6 && feetY <= platTop + 18) {
+        handlePlatformLanding(fighter, platTop, !!plat.isDropThrough, particles, addScreenShake);
+        return;
       }
     }
   }
